@@ -1,0 +1,41 @@
+[project]
+name = "observer-sdk"
+version = "0.1.0"
+description = "Plug an agent into the evals trace in Langfuse."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "langfuse>=4,<5",
+  "opentelemetry-api>=1.44,<2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "black>=26,<27",
+  "mypy>=1.19,<2",
+  "pytest>=9,<10",
+  "ruff>=0.15,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ANN"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["observer_sdk", "tests"]
+strict = true

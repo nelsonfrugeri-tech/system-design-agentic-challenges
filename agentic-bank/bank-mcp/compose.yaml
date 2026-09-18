@@ -1,0 +1,9 @@
+name: agentic-bank
+services:
+  bank-mcp:
+    build: .
+    ports: ["127.0.0.1:8001:8001"]
+    volumes:
+      # Same bank.db the evals read on the host.
+      - ${DB_DIR:?Run through make up}:/data
+      - ../evals/datasets:/datasets:ro

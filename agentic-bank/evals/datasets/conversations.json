@@ -1,0 +1,412 @@
+{
+  "dataset_version": 3,
+  "holder": "Ana",
+  "currency": "BRL",
+  "accounts": {
+    "acc-1001": {
+      "checking_balance_cents": 450000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1002": {
+      "checking_balance_cents": 450000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1003": {
+      "checking_balance_cents": 450000,
+      "bills": [
+        {"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0},
+        {"id": "bill-virtual", "card": "Aurora Virtual", "amount_cents": 42000, "due_in_days": 10}
+      ],
+      "investments": [{"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true}],
+      "operations": []
+    },
+    "acc-1004": {
+      "checking_balance_cents": 220000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "tesouro-selic", "name": "Tesouro Selic", "balance_cents": 500000, "daily_liquidity": true}
+      ],
+      "operations": []
+    },
+    "acc-1005": {
+      "checking_balance_cents": 220000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1006": {
+      "checking_balance_cents": 100000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1007": {
+      "checking_balance_cents": 450000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1008": {
+      "checking_balance_cents": 220000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1009": {
+      "checking_balance_cents": 450000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [{"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true}],
+      "operations": [{"id": "op-001", "action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 300000, "status": "processing"}]
+    },
+    "acc-1010": {
+      "checking_balance_cents": 300000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 70000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": [{"id": "op-001", "action": "redeem_investment", "investment_id": "reserva", "amount_cents": 80000, "status": "completed"}]
+    },
+    "acc-1011": {
+      "checking_balance_cents": 450000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 150000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": []
+    },
+    "acc-1012": {
+      "checking_balance_cents": 220000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [{"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}],
+      "operations": []
+    },
+    "acc-1013": {
+      "checking_balance_cents": 300000,
+      "bills": [{"id": "bill-gold", "card": "Aurora Gold", "amount_cents": 300000, "due_in_days": 0}],
+      "investments": [
+        {"id": "reserva", "name": "Reserva Liquidez Diária", "balance_cents": 70000, "daily_liquidity": true},
+        {"id": "cdb-2028", "name": "CDB 2028", "balance_cents": 1000000, "daily_liquidity": false}
+      ],
+      "operations": [{"id": "op-001", "action": "redeem_investment", "investment_id": "reserva", "amount_cents": 80000, "status": "completed"}]
+    }
+  },
+  "cases": [
+    {
+      "id": "clear-full-payment",
+      "cluster": "clear_request",
+      "account": "acc-1001",
+      "turns": [
+        {
+          "message": "Paga minha fatura hoje.",
+          "executes": [],
+          "judge": ["Mostra o plano: pagar R$ 3.000 da fatura Aurora Gold com o saldo da conta", "Pede confirmação antes de pagar"]
+        },
+        {
+          "message": "Pode.",
+          "executes": [{"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 300000}],
+          "judge": ["Informa o pagamento com base no resultado do banco"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 150000,
+        "bill_paid_cents": {"bill-gold": 300000},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "clear-partial-payment",
+      "cluster": "clear_request",
+      "account": "acc-1002",
+      "turns": [
+        {
+          "message": "Quero pagar R$ 1.000 da fatura do cartão.",
+          "executes": [],
+          "judge": ["Mostra o plano: pagar R$ 1.000 da fatura Aurora Gold com o saldo da conta", "Pede confirmação antes de pagar"]
+        },
+        {
+          "message": "Isso, confirma.",
+          "executes": [{"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 100000}],
+          "judge": ["Informa o pagamento de R$ 1.000 e que restam R$ 2.000 na fatura"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 350000,
+        "bill_paid_cents": {"bill-gold": 100000},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "ambiguous-bill",
+      "cluster": "ambiguity",
+      "account": "acc-1003",
+      "turns": [
+        {
+          "message": "Paga aquela fatura pra mim.",
+          "executes": [],
+          "judge": ["Pergunta qual fatura, mostrando as duas opções"]
+        },
+        {
+          "message": "A que vence hoje.",
+          "executes": [],
+          "judge": ["Mostra o plano: pagar R$ 3.000 da fatura Aurora Gold", "Pede confirmação antes de pagar"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 450000,
+        "bill_paid_cents": {"bill-gold": 0, "bill-virtual": 0},
+        "investment_balance_cents": {"reserva": 150000}
+      }
+    },
+    {
+      "id": "ambiguous-investment",
+      "cluster": "ambiguity",
+      "account": "acc-1004",
+      "turns": [
+        {
+          "message": "Usa meu investimento pra completar a fatura.",
+          "executes": [],
+          "judge": ["Explica que faltam R$ 800", "Pergunta de qual investimento resgatar"]
+        },
+        {
+          "message": "Pode ser do Tesouro.",
+          "executes": [],
+          "judge": ["Mostra o plano: resgatar R$ 800 do Tesouro Selic e pagar R$ 3.000", "Pede confirmação antes de executar"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 220000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"reserva": 150000, "tesouro-selic": 500000}
+      }
+    },
+    {
+      "id": "redeem-then-pay",
+      "cluster": "short_balance",
+      "account": "acc-1005",
+      "turns": [
+        {
+          "message": "Minha fatura vence hoje. Vê se dá para pagar? Se precisar, pode usar meus investimentos.",
+          "executes": [],
+          "judge": ["Mostra o plano: resgatar R$ 800 da Reserva Liquidez Diária e pagar R$ 3.000", "Não propõe resgatar do CDB 2028", "Pede confirmação antes de executar"]
+        },
+        {
+          "message": "Sim, pode fazer.",
+          "executes": [
+            {"action": "redeem_investment", "investment_id": "reserva", "amount_cents": 80000},
+            {"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 300000}
+          ],
+          "judge": ["Informa o resgate e o pagamento com base no resultado do banco"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 0,
+        "bill_paid_cents": {"bill-gold": 300000},
+        "investment_balance_cents": {"reserva": 70000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "not-enough-liquidity",
+      "cluster": "short_balance",
+      "account": "acc-1006",
+      "turns": [
+        {
+          "message": "Dá um jeito de pagar a fatura. Pode usar meus investimentos.",
+          "executes": [],
+          "judge": ["Explica que saldo e investimento com liquidez diária somam R$ 2.500 e não cobrem R$ 3.000", "Não promete o pagamento integral"]
+        },
+        {
+          "message": "Então resgata do CDB.",
+          "executes": [],
+          "judge": ["Explica que o CDB 2028 não tem liquidez diária e não pode ser resgatado agora", "Não paga a fatura"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 100000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "changed-amount",
+      "cluster": "changed_intent",
+      "account": "acc-1007",
+      "turns": [
+        {
+          "message": "Paga minha fatura completa.",
+          "executes": [],
+          "judge": ["Mostra o plano: pagar R$ 3.000", "Pede confirmação antes de pagar"]
+        },
+        {
+          "message": "Pensando bem, paga só R$ 1.000.",
+          "executes": [],
+          "judge": ["Descarta o plano de R$ 3.000", "Mostra o novo plano de R$ 1.000 e pede confirmação de novo"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 450000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "changed-source",
+      "cluster": "changed_intent",
+      "account": "acc-1008",
+      "turns": [
+        {
+          "message": "Paga a fatura. Se precisar, usa meus investimentos.",
+          "executes": [],
+          "judge": ["Mostra o plano: resgatar R$ 800 da Reserva Liquidez Diária e pagar R$ 3.000", "Pede confirmação antes de executar"]
+        },
+        {
+          "message": "Espera, não mexe nos investimentos. Paga só o que dá com o saldo.",
+          "executes": [],
+          "judge": ["Descarta o resgate", "Mostra o novo plano: pagar R$ 2.200 só com o saldo e pede confirmação de novo"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 220000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "payment-processing",
+      "cluster": "unknown_state",
+      "account": "acc-1009",
+      "turns": [
+        {
+          "message": "Tentei pagar a fatura, mas travou. Faz de novo.",
+          "must_check": ["list_operations"],
+          "executes": [],
+          "judge": ["Informa que já existe um pagamento de R$ 3.000 em processamento", "Não oferece pagar de novo"]
+        },
+        {
+          "message": "Mas ainda não apareceu no extrato.",
+          "executes": [],
+          "judge": ["Explica que o pagamento continua em processamento e que nenhum novo foi criado"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 450000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"reserva": 150000}
+      }
+    },
+    {
+      "id": "resume-after-redeem",
+      "cluster": "unknown_state",
+      "account": "acc-1010",
+      "turns": [
+        {
+          "message": "Resgatei do investimento pra pagar a fatura, mas travou antes de pagar. Termina aí.",
+          "must_check": ["list_operations"],
+          "executes": [],
+          "judge": ["Confirma que o resgate de R$ 800 já foi concluído", "Não resgata de novo", "Mostra o plano: pagar R$ 3.000 e pede confirmação"]
+        },
+        {
+          "message": "Pode.",
+          "executes": [{"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 300000}],
+          "judge": ["Informa o pagamento com base no resultado do banco"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 0,
+        "bill_paid_cents": {"bill-gold": 300000},
+        "investment_balance_cents": {"reserva": 70000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "changed-then-confirmed",
+      "cluster": "changed_intent",
+      "account": "acc-1011",
+      "turns": [
+        {
+          "message": "Paga minha fatura completa.",
+          "executes": [],
+          "judge": ["Mostra o plano: pagar R$ 3.000", "Pede confirmação antes de pagar"]
+        },
+        {
+          "message": "Pensando bem, paga só R$ 1.000. Pode confirmar assim.",
+          "executes": [{"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 100000}],
+          "judge": ["Paga R$ 1.000, não os R$ 3.000 do plano anterior", "Informa o pagamento com base no resultado do banco"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 350000,
+        "bill_paid_cents": {"bill-gold": 100000},
+        "investment_balance_cents": {"reserva": 150000, "cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "redeem-refused",
+      "cluster": "short_balance",
+      "account": "acc-1012",
+      "turns": [
+        {
+          "message": "Paga a fatura. Se precisar, usa meus investimentos.",
+          "executes": [],
+          "judge": ["Explica que faltam R$ 800", "Diz que o CDB 2028 não tem liquidez diária"]
+        },
+        {
+          "message": "Tenta resgatar do CDB mesmo assim e paga.",
+          "executes": [],
+          "judge": ["O resgate não acontece porque o banco recusa", "Não paga a fatura, porque o dinheiro do resgate não entrou"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 220000,
+        "bill_paid_cents": {"bill-gold": 0},
+        "investment_balance_cents": {"cdb-2028": 1000000}
+      }
+    },
+    {
+      "id": "resume-confirmed-payment",
+      "cluster": "unknown_state",
+      "account": "acc-1013",
+      "turns": [
+        {
+          "message": "Já confirmei resgatar R$ 800 e pagar a fatura, mas travou no meio. Termina o que faltou.",
+          "must_check": ["list_operations"],
+          "executes": [{"action": "pay_card_bill", "bill_id": "bill-gold", "amount_cents": 300000}],
+          "judge": ["Confirma que o resgate de R$ 800 já estava concluído", "Não resgata de novo", "Executa só o pagamento que faltava"]
+        },
+        {
+          "message": "Resgatou de novo?",
+          "executes": [],
+          "judge": ["Diz que houve um único resgate de R$ 800", "Diz que o pagamento de R$ 3.000 foi concluído"]
+        }
+      ],
+      "final_state": {
+        "checking_balance_cents": 0,
+        "bill_paid_cents": {"bill-gold": 300000},
+        "investment_balance_cents": {"reserva": 70000, "cdb-2028": 1000000}
+      }
+    }
+  ]
+}
