@@ -44,6 +44,29 @@ As contas são as fixtures de `../evals/datasets/conversations.json`: uma conta
 por conversa, de `acc-1001` a `acc-1013`. O `make seed DATASET=<arquivo>`
 carrega outro arquivo no mesmo formato, como um holdout.
 
+## As ferramentas
+
+São 6 tools, todas sobre a conta do header `X-Account-Id`. Valores em dinheiro
+são sempre inteiros, em centavos: `300000` é R$ 3.000.
+
+| Tool | Argumentos | Devolve | Para que serve |
+| --- | --- | --- | --- |
+| `get_balance` | nenhum | `balance_cents` | Quanto há na conta corrente |
+| `list_bills` | nenhum | Por fatura: `id`, `card`, `amount_cents`, `paid_cents`, `due_in_days` | As faturas do cartão, com o total, o que já foi pago e quantos dias faltam para vencer (`0` é hoje) |
+| `list_investments` | nenhum | Por investimento: `id`, `name`, `balance_cents`, `daily_liquidity` | Os investimentos; só os de `daily_liquidity: true` podem ser resgatados hoje |
+| `list_operations` | nenhum | Por operação: `id`, `action`, `target_id`, `amount_cents`, `status` | Os resgates e pagamentos já feitos. O `status` `processing` ainda pode se completar: nunca repita a operação |
+| `redeem_investment` | `investment_id`, `amount_cents` | A operação criada | Tira dinheiro de um investimento e põe na conta corrente |
+| `pay_card_bill` | `bill_id`, `amount_cents` | A operação criada | Paga uma fatura com o saldo da conta corrente, até o que falta nela |
+
+As quatro primeiras só leem. As duas últimas movem dinheiro de verdade,
+executam na hora e não podem ser desfeitas. Os ids vêm das leituras: o
+`investment_id` do `list_investments` e o `bill_id` do `list_bills`.
+
+Um resgate exige liquidez diária e valor dentro do saldo investido; um
+pagamento exige saldo em conta e valor dentro do que resta da fatura. Quando
+alguma dessas condições falha, o banco recusa, e a seção **Recusas** abaixo diz
+como isso chega.
+
 ## Quem é a conta
 
 A conta nunca viaja num argumento de tool: ela vem do header `X-Account-Id`,
