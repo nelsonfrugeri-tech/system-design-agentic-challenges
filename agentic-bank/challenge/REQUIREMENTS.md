@@ -189,16 +189,20 @@ aparece no Langfuse sem custo e sem os passos internos. Detalhes em
 
 ## Como rodar o ambiente
 
+Os comandos abaixo rodam **na raiz do repositório**. O `make -C <pasta>` entra
+nessa pasta e roda o Makefile de lá; de dentro de `agentic-bank/bank-mcp/`, os
+mesmos alvos são `make up` e `make inspector`.
+
 ```sh
-# 1. Uma vez, na raiz do repositório: a Langfuse local
+# 1. Uma vez: a Langfuse local
 make langfuse
 
 # 2. O banco e o MCP em http://127.0.0.1:8001/mcp
 #    (a cada start, cada conta volta ao estado inicial do dataset)
-make -C bank-mcp up
+make -C agentic-bank/bank-mcp up
 
 # 3. As tools no MCP Inspector (http://127.0.0.1:6274)
-make -C bank-mcp inspector
+make -C agentic-bank/bank-mcp inspector
 ```
 
 ## Estado do banco
@@ -217,7 +221,7 @@ padrão.
 | `operations` | Cada resgate e pagamento, com o `status` |
 | `calls` | Cada chamada de tool no MCP, consultas e recusas incluídas, na ordem do `id` |
 
-- **Resetar uma conta.** `make -C bank-mcp seed ACCOUNT=acc-10xx` volta a conta à
+- **Resetar uma conta.** `make -C agentic-bank/bank-mcp seed ACCOUNT=acc-10xx` volta a conta à
   fixture do dataset e apaga as operações e as chamadas dela; as outras contas ficam
   como estão. Sem `ACCOUNT`, reseta todas. Cada repetição de uma conversa começa com
   o reset da conta dela.
