@@ -1,77 +1,78 @@
 # Aurora Bank MCP
 
-The bank served as MCP tools over streamable HTTP, on
-`http://127.0.0.1:8001/mcp`. `bank/core` holds the rules; `bank/mcp` only
-exposes them and records every call.
+O banco servido como tools MCP sobre streamable HTTP, em
+`http://127.0.0.1:8001/mcp`. As regras ficam em `bank/core`; `bank/mcp` só as
+expõe e registra cada chamada.
 
-## Run
+## Como rodar
 
 ```sh
-make up                      # Docker: reset every account to its fixture, then serve
-make inspector               # read the tools and call them at http://127.0.0.1:6274
-make seed                    # reset every account again, without restarting
-make seed ACCOUNT=acc-1005   # reset only that account (repeat ids with spaces)
+make up                      # Docker: volta cada conta ao estado inicial e serve
+make inspector               # leia as tools e chame-as em http://127.0.0.1:6274
+make seed                    # volta todas as contas ao estado inicial, sem reiniciar
+make seed ACCOUNT=acc-1005   # só essa conta (repita ids separados por espaço)
 ```
 
-`make mcp` serves the same bank without Docker. Like the container, it runs
-`make seed` first, so every start resets every account to its fixture and a
-fresh checkout needs nothing else; the schema comes from `bank/core/schema.sql`.
-`make seed` still works alone, against a running bank. The Docker project is
-`agentic-challenges-bank`, on port 8001.
+O `make mcp` serve o mesmo banco sem Docker. Como o container, ele roda o
+`make seed` antes, então todo início volta cada conta ao seu estado inicial e
+uma cópia nova do repositório não precisa de mais nada; o schema vem de
+`bank/core/schema.sql`. O `make seed` continua funcionando sozinho, com o
+banco no ar. O projeto do Docker é `agentic-challenges-bank`, na porta 8001.
 
-## State
+## O estado
 
-The bank is one SQLite file, `$BANK_DATA_DIR/bank.db`. `BANK_DATA_DIR`
-defaults to `agentic-bank/.data`, which is gitignored; export it (or pass it to
-`make`) to move the bank. `make seed`, `make mcp` and the container (`make up`
-mounts it at `/data`) all use that one file, and the evals must read
-`$BANK_DATA_DIR/bank.db` with the same default, so they see exactly what the
-bank wrote.
+O banco é um arquivo SQLite, `$BANK_DATA_DIR/bank.db`. O padrão de
+`BANK_DATA_DIR` é `agentic-bank/.data`, que está fora do Git; exporte essa
+variável (ou passe para o `make`) para mudar o banco de lugar. O `make seed`,
+o `make mcp` e o container (o `make up` monta a pasta em `/data`) usam esse
+mesmo arquivo, e as evals precisam ler `$BANK_DATA_DIR/bank.db`, com o mesmo
+padrão, para verem exatamente o que o banco gravou.
 
-| Table | What it holds |
+| Tabela | O que guarda |
 | --- | --- |
-| `accounts` | Checking balance per account |
-| `bills` | Card bills: `amount_cents` and `paid_cents` |
-| `investments` | Investment balances and `daily_liquidity` |
-| `operations` | Every redemption and payment, with its `status` |
-| `calls` | Every MCP tool call, reads and refusals included, in `id` order |
+| `accounts` | O saldo em conta de cada conta |
+| `bills` | As faturas do cartão: `amount_cents` e `paid_cents` |
+| `investments` | Os saldos investidos e o `daily_liquidity` |
+| `operations` | Cada resgate e pagamento, com o `status` |
+| `calls` | Cada chamada de tool, incluindo leituras e recusas, na ordem de `id` |
 
-`calls` has no turn column. To attribute calls and operations to one turn,
-read `MAX(calls.id)` and `MAX(operations.rowid)` before the turn and read
-again after it, with one turn in flight per account.
+A tabela `calls` não tem coluna de turno. Para ligar chamadas e operações a um
+turno, leia `MAX(calls.id)` e `MAX(operations.rowid)` antes do turno e leia de
+novo depois, com um turno por vez em cada conta.
 
-The accounts are the fixtures of `../evals/datasets/conversations.json`: one
-account per case, `acc-1001` to `acc-1013`. `make seed DATASET=<file>` loads
-another file with the same shape, such as a holdout.
+As contas são as fixtures de `../evals/datasets/conversations.json`: uma conta
+por conversa, de `acc-1001` a `acc-1013`. O `make seed DATASET=<arquivo>`
+carrega outro arquivo no mesmo formato, como um holdout.
 
-## Who the account is
+## Quem é a conta
 
-The account never travels in a tool argument: it comes from the `X-Account-Id`
-header on every request, the way authentication identifies a customer in a real
-bank. A tool argument would let the model operate somebody else's account.
+A conta nunca viaja num argumento de tool: ela vem do header `X-Account-Id`,
+em toda requisição, do mesmo jeito que a autenticação identifica um cliente
+num banco de verdade. Como argumento, o modelo poderia operar a conta de outra
+pessoa.
 
-## Reads and transactions
+## Leituras e transações
 
-Every tool declares the standard MCP hints, so a client that discovers the
-tools through `tools/list` can tell them apart without reading prose:
+Toda tool declara as annotations padrão do MCP, então um cliente que descobre
+as tools pelo `tools/list` distingue umas das outras sem ler texto:
 
 | Tools | Annotations |
 | --- | --- |
 | `get_balance`, `list_bills`, `list_investments`, `list_operations` | `readOnlyHint: true` |
 | `redeem_investment`, `pay_card_bill` | `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false` |
 
-`idempotentHint: false` is deliberate: calling a transaction twice moves money
-twice. Guaranteeing exactly-once is the candidate's job, which is rule 3 of the
-challenge.
+O `idempotentHint: false` é proposital: chamar uma transação duas vezes move o
+dinheiro duas vezes. Garantir o exactly-once é trabalho da solução, que é a
+regra 3 do desafio.
 
-The descriptions repeat it in words ("Read-only:" and "Transaction (moves
-money, needs the customer's confirmation):") for models that ignore
+As descrições repetem isso em palavras ("Read-only:" e "Transaction (moves
+money, needs the customer's confirmation):"), para modelos que ignoram as
 annotations.
 
-## Examples of use
+## Exemplos de uso
 
-The examples live in the `inputSchema` as JSON Schema `examples`, written with
-Pydantic's `Field(examples=[...])`:
+Os exemplos ficam no `inputSchema`, como `examples` do JSON Schema, escritos
+com o `Field(examples=[...])` do Pydantic:
 
 ```json
 "bill_id": {
@@ -81,40 +82,44 @@ Pydantic's `Field(examples=[...])`:
 }
 ```
 
-**Why not a native mechanism:** the MCP Python SDK pinned here, `mcp` 1.30.0,
-has none. `@server.tool()` accepts `title`, `annotations`, `icons`, `meta` and
-`structured_output`, and neither `mcp.types.Tool`/`ToolAnnotations` nor
-`mcp/server/fastmcp/tools/base.py` mentions examples — checked in the installed
-package on 2026-09-17. JSON Schema `examples` is the portable alternative: it
-reaches any client that reads the schema, which is every MCP client.
+**Por que não um mecanismo nativo:** o SDK Python de MCP fixado aqui, o `mcp`
+1.30.0, não tem nenhum. O `@server.tool()` aceita `title`, `annotations`,
+`icons`, `meta` e `structured_output`, e nem
+`mcp.types.Tool`/`ToolAnnotations` nem `mcp/server/fastmcp/tools/base.py`
+mencionam exemplos — conferido no pacote instalado em 17/09/2026. O `examples`
+do JSON Schema é a alternativa portátil: chega a qualquer cliente que leia o
+schema, que é todo cliente MCP.
 
-Revisit this if the SDK is upgraded and gains a first-class examples field.
+Vale revisitar isso se o SDK for atualizado e ganhar um campo próprio de
+exemplos.
 
-## Outputs
+## Saídas
 
-Every tool declares an `outputSchema` and returns structured content. FastMCP
-wraps a list return in `{"result": [...]}`; a single model is returned as its
-own object. The typed models are in `bank/core/operations.py`.
+Toda tool declara um `outputSchema` e devolve conteúdo estruturado. O FastMCP
+embrulha um retorno de lista em `{"result": [...]}`; um único modelo volta
+como objeto. Os modelos tipados estão em `bank/core/operations.py`.
 
-## Refusals
+## Recusas
 
-The bank refuses what a real bank would refuse. A refusal is a tool error
-(`isError: true`) whose only content is one text line, led by a stable code:
+O banco recusa o que um banco de verdade recusaria. Uma recusa é um erro de
+tool (`isError: true`) cujo único conteúdo é uma linha de texto, começando por
+um código estável:
 
 ```text
 Error executing tool <name>: <code>: <message>
 Error executing tool pay_card_bill: insufficient_balance: insufficient balance
 ```
 
-The prefix comes from FastMCP, which wraps every tool exception; there is no
-`structuredContent` on a refusal. Branch on the `<code>` after the tool name.
+O prefixo vem do FastMCP, que embrulha toda exceção de tool; numa recusa não
+há `structuredContent`. Trate a recusa pelo `<code>`, que vem logo depois do
+nome da tool.
 
-| Code | When |
+| Código | Quando |
 | --- | --- |
-| `insufficient_balance` | The checking balance does not cover the payment |
-| `no_daily_liquidity` | The investment cannot be redeemed today |
-| `amount_out_of_range` | Zero, negative, or more than the bill or investment holds |
-| `unknown_bill`, `unknown_investment` | The id does not exist in this account |
-| `unknown_account` | The `X-Account-Id` header names no account |
+| `insufficient_balance` | O saldo em conta não cobre o pagamento |
+| `no_daily_liquidity` | O investimento não pode ser resgatado hoje |
+| `amount_out_of_range` | Zero, negativo, ou mais do que resta na fatura ou no investimento |
+| `unknown_bill`, `unknown_investment` | O id não existe nessa conta |
+| `unknown_account` | O header `X-Account-Id` não corresponde a nenhuma conta |
 
-A refused call changes nothing and is still recorded in `calls`.
+Uma chamada recusada não muda nada e mesmo assim é registrada em `calls`.
