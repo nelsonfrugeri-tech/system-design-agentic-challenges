@@ -1,9 +1,10 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from bank.core.seed import Operation, load_dataset, seed
+from bank.core.seed import Operation, load_dataset, main, seed
 
 
 def test_every_fixture_becomes_an_account(db: sqlite3.Connection) -> None:
@@ -58,3 +59,34 @@ def test_operation_needs_a_target() -> None:
         Operation.model_validate(
             {"id": "op-1", "action": "pay_card_bill", "amount_cents": 1, "status": "x"}
         )
+
+
+def test_operation_action_and_status_are_validated() -> None:
+    with pytest.raises(ValidationError) as error:
+        Operation.model_validate(
+            {
+                "id": "op-001",
+                "action": "transfer",
+                "bill_id": "bill-gold",
+                "amount_cents": 1,
+                "status": "done",
+            }
+        )
+
+    assert {tuple(e["loc"]) for e in error.value.errors()} == {("action",), ("status",)}
+
+
+def test_an_unknown_account_is_a_clear_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_path = tmp_path / "bank.db"
+    monkeypatch.setattr(
+        "sys.argv", ["seed", "--db", str(db_path), "--account", "acc-9999"]
+    )
+
+    with pytest.raises(SystemExit) as exit_:
+        main()
+
+    assert exit_.value.code == 2
+    assert "unknown account acc-9999" in capsys.readouterr().err
+    assert not db_path.exists()

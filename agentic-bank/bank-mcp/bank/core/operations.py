@@ -19,6 +19,11 @@ type RefusalCode = Literal[
     "unknown_account",
 ]
 
+# Plain aliases, not `type`: pydantic inlines them, so the tools' outputSchema
+# keeps the enums in place instead of moving them to $defs.
+Action = Literal["redeem_investment", "pay_card_bill"]
+Status = Literal["processing", "completed", "failed"]
+
 
 class Refused(Exception):
     """The bank rejected the request and nothing changed.
@@ -59,12 +64,10 @@ class Investment(BaseModel):
 
 class Operation(BaseModel):
     id: str = Field(description="Operation id, e.g. op-001.")
-    action: Literal["redeem_investment", "pay_card_bill"] = Field(
-        description="What moved the money."
-    )
+    action: Action = Field(description="What moved the money.")
     target_id: str = Field(description="Investment id or bill id it acted on.")
     amount_cents: int = Field(description="Amount moved, in cents.")
-    status: Literal["processing", "completed", "failed"] = Field(
+    status: Status = Field(
         description="processing may still complete: never repeat it."
     )
 
@@ -200,7 +203,7 @@ def _write_or_refuse(
 def _record(
     db: sqlite3.Connection,
     account_id: str,
-    action: Literal["redeem_investment", "pay_card_bill"],
+    action: Action,
     target_id: str,
     amount_cents: int,
 ) -> Operation:

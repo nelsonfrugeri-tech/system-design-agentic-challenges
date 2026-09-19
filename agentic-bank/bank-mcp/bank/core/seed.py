@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from bank.core.operations import Action, Status
+
 SCHEMA = Path(__file__).with_name("schema.sql")
 # The accounts are the dataset fixtures. The holdout brings its own file.
 DATASET = Path(__file__).parents[3] / "evals" / "datasets" / "conversations.json"
@@ -29,10 +31,10 @@ class Investment(BaseModel):
 
 class Operation(BaseModel):
     id: str
-    action: str
+    action: Action
     target_id: str = Field(validation_alias=AliasChoices("bill_id", "investment_id"))
     amount_cents: int
-    status: str
+    status: Status
 
 
 class Fixture(BaseModel):
@@ -111,6 +113,12 @@ def main() -> None:
 
     dataset = load_dataset(args.dataset)
     account_ids: list[str] = args.account or list(dataset.accounts)
+    unknown = [account for account in account_ids if account not in dataset.accounts]
+    if unknown:
+        parser.error(
+            f"unknown account {', '.join(unknown)}; {args.dataset} has"
+            f" {', '.join(dataset.accounts)}"
+        )
     with closing(connect(args.db)) as connection:
         seed(connection, dataset, account_ids)
     print(f"Seeded {len(account_ids)} accounts into {args.db}")

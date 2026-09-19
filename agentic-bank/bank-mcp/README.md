@@ -7,13 +7,33 @@ exposes them and records every call.
 ## Run
 
 ```sh
-make up          # Docker: reset every account to its fixture, then serve
-make inspector   # read the tools and call them at http://127.0.0.1:6274
-make seed        # reset every account again, without restarting
+make up                      # Docker: reset every account to its fixture, then serve
+make inspector               # read the tools and call them at http://127.0.0.1:6274
+make seed                    # reset every account again, without restarting
+make seed ACCOUNT=acc-1005   # reset only that account (repeat ids with spaces)
 ```
 
-`make mcp` serves the same bank without Docker. The SQLite file lives outside the
-repository (`DB` in the Makefile), so the evals read exactly what the bank wrote.
+`make mcp` serves the same bank without Docker. The Docker project is
+`agentic-challenges-bank`, on port 8001.
+
+## State
+
+The bank is one SQLite file, `agentic-bank/.data/bank.db`, gitignored.
+`DATA_DIR=<dir>` moves it for every target (`seed`, `mcp`, `up`, `down`); the
+file name is always `bank.db`, so Docker and the host use the same file and the
+evals read exactly what the bank wrote.
+
+| Table | What it holds |
+| --- | --- |
+| `accounts` | Checking balance per account |
+| `bills` | Card bills: `amount_cents` and `paid_cents` |
+| `investments` | Investment balances and `daily_liquidity` |
+| `operations` | Every redemption and payment, with its `status` |
+| `calls` | Every MCP tool call, reads and refusals included, in `id` order |
+
+`calls` has no turn column. To attribute calls and operations to one turn,
+read `MAX(calls.id)` and `MAX(operations.rowid)` before the turn and read
+again after it, with one turn in flight per account.
 
 The accounts are the fixtures of `../evals/datasets/conversations.json`: one
 account per case, `acc-1001` to `acc-1013`. `make seed DATASET=<file>` loads
