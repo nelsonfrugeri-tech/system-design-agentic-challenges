@@ -4,6 +4,6 @@ services:
     build: .
     ports: ["127.0.0.1:8001:8001"]
     volumes:
-      # Same DATA_DIR/bank.db the evals read on the host.
-      - ${DATA_DIR:?Run through make up}:/data
+      # Same $BANK_DATA_DIR/bank.db that make seed, make mcp and the evals use.
+      - ${BANK_DATA_DIR:?Run through make up}:/data
       - ../evals/datasets:/datasets:ro

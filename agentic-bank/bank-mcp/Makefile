@@ -2,10 +2,10 @@
 
 .PHONY: help sync format format-check lint typecheck test check pre-commit seed mcp up down inspector
 
-# The SQLite file the evals read too. agentic-bank/.data is gitignored; move it
-# with DATA_DIR=<dir>. The file is always bank.db, in Docker as well.
-DATA_DIR ?= ../.data
-DB := $(DATA_DIR)/bank.db
+# The bank is $(BANK_DATA_DIR)/bank.db for seed, mcp and the container, and the
+# evals read the same file. The default agentic-bank/.data is gitignored;
+# export BANK_DATA_DIR (or pass it to make) to move it.
+BANK_DATA_DIR ?= $(abspath ../.data)
 # Empty resets every account; ACCOUNT="acc-1005 acc-1006" resets only those.
 ACCOUNT ?=
 DATASET ?= ../evals/datasets/conversations.json
@@ -19,9 +19,9 @@ help:
 	@echo 'test          Run offline tests'
 	@echo 'check         format-check, lint, typecheck, test'
 	@echo 'pre-commit    format, then check'
-	@echo 'seed          Reset accounts to their fixtures: make seed [ACCOUNT=acc-1005] [DATA_DIR=dir] [DATASET=path]'
-	@echo 'mcp           Seed, then serve the bank MCP on http://127.0.0.1:8001/mcp: make mcp [DATA_DIR=dir]'
-	@echo 'up            Seed and serve the bank MCP in Docker (the same DB file)'
+	@echo 'seed          Reset accounts to their fixtures: make seed [ACCOUNT=acc-1005] [DATASET=path]'
+	@echo 'mcp           Seed, then serve the bank MCP on http://127.0.0.1:8001/mcp: make mcp'
+	@echo 'up            Seed and serve the bank MCP in Docker (the same $$BANK_DATA_DIR/bank.db)'
 	@echo 'down          Stop the Docker bank MCP'
 	@echo 'inspector     Browse and call the tools in MCP Inspector (http://127.0.0.1:6274)'
 
@@ -54,18 +54,18 @@ pre-commit:
 	$(MAKE) check
 
 seed:
-	uv run --locked python -m bank.core.seed --db "$(DB)" --dataset "$(DATASET)" $(foreach account,$(ACCOUNT),--account $(account))
+	uv run --locked python -m bank.core.seed --db "$(BANK_DATA_DIR)/bank.db" --dataset "$(DATASET)" $(foreach account,$(ACCOUNT),--account $(account))
 
 # Like the container: every start resets the bank, so a fresh checkout works.
 mcp: seed
-	uv run --locked python -m bank.mcp.server --db "$(DB)"
+	uv run --locked python -m bank.mcp.server --db "$(BANK_DATA_DIR)/bank.db"
 
 up:
-	@mkdir -p "$(DATA_DIR)"
-	DATA_DIR="$(abspath $(DATA_DIR))" docker compose up -d --build
+	@mkdir -p "$(BANK_DATA_DIR)"
+	BANK_DATA_DIR="$(abspath $(BANK_DATA_DIR))" docker compose up -d --build
 
 down:
-	DATA_DIR="$(abspath $(DATA_DIR))" docker compose down
+	BANK_DATA_DIR="$(abspath $(BANK_DATA_DIR))" docker compose down
 
 inspector:
 	npx -y @modelcontextprotocol/inspector@2.6.0 --config bank/mcp/inspector.json

@@ -21,10 +21,12 @@ fresh checkout needs nothing else; the schema comes from `bank/core/schema.sql`.
 
 ## State
 
-The bank is one SQLite file, `agentic-bank/.data/bank.db`, gitignored.
-`DATA_DIR=<dir>` moves it for every target (`seed`, `mcp`, `up`, `down`); the
-file name is always `bank.db`, so Docker and the host use the same file and the
-evals read exactly what the bank wrote.
+The bank is one SQLite file, `$BANK_DATA_DIR/bank.db`. `BANK_DATA_DIR`
+defaults to `agentic-bank/.data`, which is gitignored; export it (or pass it to
+`make`) to move the bank. `make seed`, `make mcp` and the container (`make up`
+mounts it at `/data`) all use that one file, and the evals must read
+`$BANK_DATA_DIR/bank.db` with the same default, so they see exactly what the
+bank wrote.
 
 | Table | What it holds |
 | --- | --- |

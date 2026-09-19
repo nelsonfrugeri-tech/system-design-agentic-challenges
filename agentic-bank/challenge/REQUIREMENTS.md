@@ -204,8 +204,10 @@ make -C bank-mcp inspector
 ## Estado do banco
 
 As evals leem o banco, não a resposta. O banco é um arquivo SQLite,
-`agentic-bank/.data/bank.db`, fora do Git. `DATA_DIR=<pasta>` muda a pasta em todos os
-alvos do `bank-mcp`; o arquivo é sempre `bank.db`, no Docker e no host.
+`$BANK_DATA_DIR/bank.db`. `BANK_DATA_DIR` vale `agentic-bank/.data` por padrão, fora do
+Git; exporte a variável para mudar a pasta. `make seed`, `make mcp` e o container usam
+esse mesmo arquivo, e as evals precisam ler `$BANK_DATA_DIR/bank.db`, com o mesmo
+padrão.
 
 | Tabela | O que guarda |
 | --- | --- |
