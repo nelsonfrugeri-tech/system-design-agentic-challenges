@@ -16,6 +16,7 @@ build-backend = "hatchling.build"
 dev = [
   "black>=26,<27",
   "mypy>=1.19,<2",
+  "opentelemetry-sdk>=1.44,<2",
   "pytest>=9,<10",
   "ruff>=0.15,<1",
 ]

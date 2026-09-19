@@ -1,11 +1,19 @@
 import asyncio
+import json
+from collections.abc import Callable
 
+import pytest
+from langfuse import get_client
 from opentelemetry import trace
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from observer_sdk.tracing import continue_trace, traced_turn
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
-TRACEPARENT = f"00-{TRACE_ID}-00f067aa0ba902b7-01"
+PARENT_SPAN_ID = "00f067aa0ba902b7"
+TRACEPARENT = f"00-{TRACE_ID}-{PARENT_SPAN_ID}-01"
 HEADERS = {"traceparent": TRACEPARENT, "x-account-id": "acc-1005"}
 
 
@@ -62,6 +70,42 @@ def test_an_async_turn_runs_inside_the_evals_trace() -> None:
 
     assert reply == "recebi: Pode."
     assert seen == [TRACE_ID]
+
+
+def sync_turn() -> str:
+    @traced_turn
+    def chat(*, headers: dict[str, str], message: str) -> str:
+        return f"recebi: {message}"
+
+    return chat(headers=HEADERS, message="Paga minha fatura hoje.")
+
+
+def async_turn() -> str:
+    @traced_turn
+    async def chat(*, headers: dict[str, str], message: str) -> str:
+        return f"recebi: {message}"
+
+    return asyncio.run(chat(headers=HEADERS, message="Paga minha fatura hoje."))
+
+
+@pytest.mark.parametrize("turn", [sync_turn, async_turn])
+def test_the_solution_span_is_recorded_under_the_incoming_span(
+    exporter: InMemorySpanExporter, turn: Callable[[], str]
+) -> None:
+    turn()
+    get_client().flush()
+
+    [span] = [span for span in exporter.get_finished_spans() if span.name == "solution"]
+    attributes = span.attributes or {}
+    assert span.parent is not None
+    assert format(span.context.trace_id, "032x") == TRACE_ID
+    assert format(span.parent.span_id, "016x") == PARENT_SPAN_ID
+    assert json.loads(str(attributes["langfuse.observation.input"])) == {
+        "message": "Paga minha fatura hoje."
+    }
+    assert json.loads(str(attributes["langfuse.observation.output"])) == {
+        "reply": "recebi: Paga minha fatura hoje."
+    }
 
 
 def test_a_turn_without_headers_is_refused() -> None:

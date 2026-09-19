@@ -27,6 +27,11 @@ async def chat(*, headers, thread_id, account_id, message) -> str:
 - It needs `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`. The
   local values are in `infra/langfuse/.env`, created by `make langfuse` at the
   repository root.
+- It never flushes inside a turn, so Langfuse adds nothing to the latency the
+  evals measure. The Langfuse client sends spans from a background thread, at
+  most 5 s after they end (`LANGFUSE_FLUSH_INTERVAL`), and flushes the rest
+  when the process exits (it registers that with `atexit`). Stop the server
+  with a normal shutdown, not `kill -9`, or the last spans are lost.
 
 ## What the caller sends
 

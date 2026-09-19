@@ -53,30 +53,26 @@ def continue_trace(headers: Mapping[str, str]) -> Iterator[None]:
 def traced_turn[F: Turn | AsyncTurn](handler: F) -> F:
     """Record one turn of your solution inside the evals trace.
 
-    Wraps a sync or an async handler; the async one is awaited and never blocks
-    the event loop, because the Langfuse client only flushes synchronously.
+    Wraps a sync or an async handler. It never flushes: the Langfuse client
+    exports spans from a background thread and flushes once more at process
+    exit, so a slow or unreachable Langfuse never adds to a turn's latency.
     """
     if asyncio.iscoroutinefunction(handler):
 
         @wraps(handler)
         async def async_wrapper(*args: object, **kwargs: object) -> str:
-            client = get_client()
             with _turn_span(kwargs) as span:
                 reply = await cast(AsyncTurn, handler)(*args, **kwargs)
                 span.update(output={"reply": reply})
-            await asyncio.to_thread(client.flush)
             return reply
 
         return cast(F, async_wrapper)
 
     @wraps(handler)
     def wrapper(*args: object, **kwargs: object) -> str:
-        client = get_client()
         with _turn_span(kwargs) as span:
             reply = cast(Turn, handler)(*args, **kwargs)
             span.update(output={"reply": reply})
-        # The server keeps running, so nothing else would send these spans.
-        client.flush()
         return reply
 
     return cast(F, wrapper)

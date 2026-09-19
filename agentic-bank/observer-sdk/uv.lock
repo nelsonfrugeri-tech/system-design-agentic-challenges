@@ -277,6 +277,7 @@ dependencies = [
 dev = [
     { name = "black" },
     { name = "mypy" },
+    { name = "opentelemetry-sdk" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -291,6 +292,7 @@ requires-dist = [
 dev = [
     { name = "black", specifier = ">=26,<27" },
     { name = "mypy", specifier = ">=1.19,<2" },
+    { name = "opentelemetry-sdk", specifier = ">=1.44,<2" },
     { name = "pytest", specifier = ">=9,<10" },
     { name = "ruff", specifier = ">=0.15,<1" },
 ]
