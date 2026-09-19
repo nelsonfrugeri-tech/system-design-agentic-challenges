@@ -13,7 +13,10 @@ make seed                    # reset every account again, without restarting
 make seed ACCOUNT=acc-1005   # reset only that account (repeat ids with spaces)
 ```
 
-`make mcp` serves the same bank without Docker. The Docker project is
+`make mcp` serves the same bank without Docker. Like the container, it runs
+`make seed` first, so every start resets every account to its fixture and a
+fresh checkout needs nothing else; the schema comes from `bank/core/schema.sql`.
+`make seed` still works alone, against a running bank. The Docker project is
 `agentic-challenges-bank`, on port 8001.
 
 ## State

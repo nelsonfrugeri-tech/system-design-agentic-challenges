@@ -20,7 +20,7 @@ help:
 	@echo 'check         format-check, lint, typecheck, test'
 	@echo 'pre-commit    format, then check'
 	@echo 'seed          Reset accounts to their fixtures: make seed [ACCOUNT=acc-1005] [DATA_DIR=dir] [DATASET=path]'
-	@echo 'mcp           Serve the bank MCP on http://127.0.0.1:8001/mcp: make mcp [DATA_DIR=dir]'
+	@echo 'mcp           Seed, then serve the bank MCP on http://127.0.0.1:8001/mcp: make mcp [DATA_DIR=dir]'
 	@echo 'up            Seed and serve the bank MCP in Docker (the same DB file)'
 	@echo 'down          Stop the Docker bank MCP'
 	@echo 'inspector     Browse and call the tools in MCP Inspector (http://127.0.0.1:6274)'
@@ -56,7 +56,8 @@ pre-commit:
 seed:
 	uv run --locked python -m bank.core.seed --db "$(DB)" --dataset "$(DATASET)" $(foreach account,$(ACCOUNT),--account $(account))
 
-mcp:
+# Like the container: every start resets the bank, so a fresh checkout works.
+mcp: seed
 	uv run --locked python -m bank.mcp.server --db "$(DB)"
 
 up:
