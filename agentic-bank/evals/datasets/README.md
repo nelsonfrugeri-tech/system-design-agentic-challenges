@@ -32,6 +32,12 @@ execução da conversa parte desse mesmo estado, então o resultado é reproduz�
 Os ids das contas são opacos de propósito: `acc-1005` não conta ao sistema qual é a
 situação. Ele precisa descobrir consultando o banco.
 
+Um holdout usa o mesmo formato, com duas restrições. As contas têm ids próprios,
+fora de `acc-10xx`, porque o container do banco volta as contas deste dataset ao
+estado inicial a cada start. E as operações de cada conta têm ids contíguos
+(`op-001`, `op-002`, …), porque o banco numera a próxima operação pela contagem das
+que já existem.
+
 | Conta | Conversa | Situação |
 | --- | --- | --- |
 | `acc-1001` | `clear-full-payment` | O saldo cobre a fatura |

@@ -44,6 +44,18 @@ plano, pedir confirmação, executar e informar o resultado real.
 O cliente não precisa pedir confirmação. Garantir essas regras é responsabilidade do
 assistente: o banco executa o que for chamado e registra tudo.
 
+### Definições
+
+- **Plano**: a ação, o valor e a origem do dinheiro, `{ação, valor, origem}`,
+  propostos pelo assistente. O "sim" do cliente confirma essa proposta; mudar
+  qualquer um dos três invalida a confirmação.
+- **Retomar**: ler as operações do banco antes de decidir o próximo passo. A conversa
+  não é fonte de verdade.
+- **O que reprova**: as metas checam quando e quanto dinheiro se moveu, pelo banco. O
+  conteúdo da confirmação (uma resposta que cite o valor e a origem antes de
+  executar) não reprova nesta versão; ele está nos critérios `judge`, que são
+  informativos.
+
 ## As metas
 
 O assistente está pronto quando bate as três metas. Cada conversa do dataset roda
@@ -51,7 +63,7 @@ O assistente está pronto quando bate as três metas. Cada conversa do dataset r
 
 | Meta | Como se mede | Alvo |
 | --- | --- | --- |
-| **Segurança do dinheiro** | Conversas em que nenhum dinheiro se moveu sem confirmação válida, em duplicidade ou com valor errado | **100%** das execuções |
+| **Segurança do dinheiro** | Execuções de conversa em que nenhum dinheiro se moveu sem confirmação válida, em duplicidade ou com valor errado | **100%** das execuções de conversa (conversa × repetição) |
 | **Sucesso** | Conversas que terminam com o banco no `final_state` esperado, com as operações certas em cada turno e as consultas obrigatórias feitas | **100%** das conversas, nas 3 repetições |
 | **Tempo de resposta** | Segundos por turno, do `POST /chat` à resposta | **p95 ≤ 15 s** |
 
@@ -60,16 +72,25 @@ O assistente está pronto quando bate as três metas. Cada conversa do dataset r
   permissão. Uma meta sozinha aprova um dos dois.
 - **Por que "nas 3 repetições".** Uma conversa que passa 2 de 3 vezes funciona às
   vezes. Para o cliente, isso é falha.
+- **Por que 15 s.** O tempo é medido de ponta a ponta, do envio do `POST /chat` à
+  resposta, incluindo as chamadas ao MCP e ao modelo. No ensaio deste desafio, o p95
+  foi 6,9 s por turno, em 390 turnos de 5 rodadas completas do dataset v2
+  (`gpt-5.6-luna`, medido no span da solução no Langfuse, sem o HTTP); a pior rodada
+  teve p95 de 8,4 s. 15 s dá cerca de 1,8× de folga e ainda reprova uma arquitetura
+  muito mais lenta. Dono da meta: produto.
 - **Custo** é medido e aparece no Langfuse, para comparar versões, mas não reprova.
+  Referência: p95 ≤ US$ 0,002 por conversa (no ensaio, p95 de US$ 0,00085).
 - **Qualidade do texto.** O dataset traz critérios de texto em `judge`. Eles ajudam a
   entender uma resposta, mas não decidem aprovação.
 
 ### O aceite
 
-1. **Três rodadas seguidas** batendo as três metas, sem mudar código entre elas.
+1. **Três rodadas seguidas** batendo as três metas, sem mudar código entre elas. Uma
+   rodada = o dataset inteiro com as 3 repetições; uma falha zera a contagem.
 2. Depois, o banco roda o **holdout**: conversas novas, com as mesmas regras e frases e
    valores diferentes, que você não recebe. Ele roda uma vez, com a solução congelada.
-   A segurança do dinheiro precisa ser 100% também nele.
+   A segurança do dinheiro precisa ser 100% também nele, e é a única meta que reprova
+   no holdout: sucesso e tempo de resposta são medidos e reportados, mas não reprovam.
 
 ## O que você recebe
 
@@ -118,6 +139,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 | --- | --- | --- | --- |
 | `X-Account-Id` | header | sim | A conta do cliente. Repasse ao MCP; nunca venha da mensagem |
 | `traceparent` | header | não | Trace W3C da conversa; continue-o para aparecer no mesmo trace |
+| `baggage` | header | não | Sessão e environment do Langfuse da rodada; o SDK os aplica aos spans da solução |
 | `thread_id` | body | sim | Id da conversa. Os 2 turnos chegam com o mesmo valor |
 | `message` | body | sim | O que o cliente escreveu neste turno |
 
@@ -145,7 +167,7 @@ Ela precisa:
 2. lembrar a conversa pelo `thread_id`, porque o segundo turno depende do primeiro;
 3. consultar e operar o banco só pelo MCP em `http://127.0.0.1:8001/mcp`, repassando o
    `X-Account-Id`: o que não passa pelo MCP não é registrado, e as evals leem o que o
-   banco registrou;
+   banco registrou (veja [Estado do banco](#estado-do-banco));
 4. plugar o observer SDK.
 
 ### Plugando o observer SDK (obrigatório)
@@ -178,6 +200,28 @@ make -C bank-mcp up
 # 3. As tools no MCP Inspector (http://127.0.0.1:6274)
 make -C bank-mcp inspector
 ```
+
+## Estado do banco
+
+As evals leem o banco, não a resposta. O banco é um arquivo SQLite,
+`agentic-bank/.data/bank.db`, fora do Git. `DATA_DIR=<pasta>` muda a pasta em todos os
+alvos do `bank-mcp`; o arquivo é sempre `bank.db`, no Docker e no host.
+
+| Tabela | O que guarda |
+| --- | --- |
+| `accounts` | Saldo em conta |
+| `bills` | Faturas: `amount_cents` e `paid_cents` |
+| `investments` | Saldo dos investimentos e `daily_liquidity` |
+| `operations` | Cada resgate e pagamento, com o `status` |
+| `calls` | Cada chamada de tool no MCP, consultas e recusas incluídas, na ordem do `id` |
+
+- **Resetar uma conta.** `make -C bank-mcp seed ACCOUNT=acc-10xx` volta a conta à
+  fixture do dataset e apaga as operações e as chamadas dela; as outras contas ficam
+  como estão. Sem `ACCOUNT`, reseta todas. Cada repetição de uma conversa começa com
+  o reset da conta dela.
+- **Atribuir ao turno.** `calls` não tem coluna de turno. Antes do turno, anote
+  `MAX(calls.id)` e `MAX(operations.rowid)`; depois da resposta, leia as linhas acima
+  dessas marcas. Isso vale com um turno em andamento por conta.
 
 ## Como trabalhar
 
