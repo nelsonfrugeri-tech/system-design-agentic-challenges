@@ -73,9 +73,16 @@ own object. The typed models are in `bank/core/operations.py`.
 
 ## Refusals
 
-The bank refuses what a real bank would refuse. A refusal carries a stable
-`code` besides the message, so a solution can branch on it without parsing
-text.
+The bank refuses what a real bank would refuse. A refusal is a tool error
+(`isError: true`) whose only content is one text line, led by a stable code:
+
+```text
+Error executing tool <name>: <code>: <message>
+Error executing tool pay_card_bill: insufficient_balance: insufficient balance
+```
+
+The prefix comes from FastMCP, which wraps every tool exception; there is no
+`structuredContent` on a refusal. Branch on the `<code>` after the tool name.
 
 | Code | When |
 | --- | --- |

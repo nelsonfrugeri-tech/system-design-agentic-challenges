@@ -44,8 +44,9 @@ BillId = Annotated[
 ]
 AmountCents = Annotated[
     int,
+    # No gt=0 here: bank/core refuses it with amount_out_of_range and the call
+    # is recorded, which a schema validation error would skip.
     Field(
-        gt=0,
         description="Amount in cents, a positive integer; 80000 is R$ 800.",
         examples=[80000, 300000],
     ),
@@ -69,7 +70,8 @@ def run_tool[T](
         try:
             result = operation(db)
         except operations.Refused as error:
-            # The code leads, so the message the client reads starts with it.
+            # The code leads the message. FastMCP wraps it, so the client reads
+            # "Error executing tool <name>: <code>: <message>". See README.md.
             _record_call(
                 db,
                 account_id,

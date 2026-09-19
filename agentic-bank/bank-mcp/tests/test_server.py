@@ -2,8 +2,13 @@ import asyncio
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.lowlevel.server import request_ctx
+from mcp.shared.context import RequestContext
+from starlette.requests import Request
 
 from bank.core import operations
 from bank.core.seed import connect
@@ -19,6 +24,24 @@ def calls(db_path: Path) -> list[tuple[str, str, str]]:
             "SELECT tool, arguments, result FROM calls ORDER BY id"
         ).fetchall()
     return rows
+
+
+def call_tool(
+    db_path: Path, account_id: str, tool: str, arguments: dict[str, Any]
+) -> object:
+    """Call a tool the way the MCP server does, with X-Account-Id on the request."""
+    server = create_server(db_path, "127.0.0.1", 8001)
+    request = Request(
+        {"type": "http", "headers": [(b"x-account-id", account_id.encode())]}
+    )
+    context: RequestContext[Any, Any, Any] = RequestContext(
+        request_id=1, meta=None, session=None, lifespan_context=None, request=request
+    )
+    token = request_ctx.set(context)
+    try:
+        return asyncio.run(server.call_tool(tool, arguments))
+    finally:
+        request_ctx.reset(token)
 
 
 def test_every_call_is_recorded(db_path: Path) -> None:
@@ -99,3 +122,39 @@ def test_transaction_arguments_carry_examples(db_path: Path) -> None:
     assert pay["bill_id"]["examples"] == ["bill-gold", "bill-virtual"]
     assert pay["amount_cents"]["examples"] == [80000, 300000]
     assert redeem["investment_id"]["examples"] == ["reserva", "tesouro-selic"]
+
+
+def test_a_refusal_reaches_the_client_as_text_led_by_its_code(db_path: Path) -> None:
+    with pytest.raises(ToolError) as refusal:
+        call_tool(
+            db_path,
+            "acc-1005",
+            "pay_card_bill",
+            {"bill_id": "bill-gold", "amount_cents": 300000},
+        )
+
+    assert str(refusal.value) == (
+        "Error executing tool pay_card_bill: insufficient_balance: insufficient balance"
+    )
+
+
+def test_a_zero_amount_is_refused_by_the_bank_and_recorded(db_path: Path) -> None:
+    with pytest.raises(ToolError) as refusal:
+        call_tool(
+            db_path,
+            "acc-1005",
+            "pay_card_bill",
+            {"bill_id": "bill-gold", "amount_cents": 0},
+        )
+
+    assert str(refusal.value).startswith(
+        "Error executing tool pay_card_bill: amount_out_of_range: "
+    )
+    assert calls(db_path) == [
+        (
+            "pay_card_bill",
+            '{"bill_id": "bill-gold", "amount_cents": 0}',
+            '{"refused": "amount_out_of_range",'
+            ' "message": "amount is outside what is left on the bill"}',
+        )
+    ]
