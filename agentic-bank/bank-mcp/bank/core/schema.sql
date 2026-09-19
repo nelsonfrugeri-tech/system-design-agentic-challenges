@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS bills (
     amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
     due_in_days INTEGER NOT NULL CHECK (due_in_days >= 0),
     paid_cents INTEGER NOT NULL DEFAULT 0 CHECK (paid_cents >= 0),
-    PRIMARY KEY (account_id, id)
+    PRIMARY KEY (account_id, id),
+    CHECK (paid_cents <= amount_cents)
 );
 
 CREATE TABLE IF NOT EXISTS investments (

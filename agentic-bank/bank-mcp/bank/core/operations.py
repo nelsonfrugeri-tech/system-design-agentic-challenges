@@ -129,10 +129,14 @@ def redeem_investment(
                 "amount_out_of_range", "amount is outside the investment balance"
             )
 
-        db.execute(
+        # The checks above read outside the write lock, so the UPDATE re-checks:
+        # another writer may have moved the same money in between.
+        _write_or_refuse(
+            db,
             "UPDATE investments SET balance_cents = balance_cents - ?"
-            " WHERE account_id = ? AND id = ?",
-            (amount_cents, account_id, investment_id),
+            " WHERE account_id = ? AND id = ? AND balance_cents >= ?",
+            (amount_cents, account_id, investment_id, amount_cents),
+            Refused("amount_out_of_range", "amount is outside the investment balance"),
         )
         db.execute(
             "UPDATE accounts SET balance_cents = balance_cents + ? WHERE id = ?",
@@ -161,16 +165,36 @@ def pay_card_bill(
         if amount_cents > balance_cents:
             raise Refused("insufficient_balance", "insufficient balance")
 
-        db.execute(
-            "UPDATE accounts SET balance_cents = balance_cents - ? WHERE id = ?",
-            (amount_cents, account_id),
+        # The checks above read outside the write lock, so each UPDATE re-checks:
+        # another writer may have moved the same money in between.
+        _write_or_refuse(
+            db,
+            "UPDATE accounts SET balance_cents = balance_cents - ?"
+            " WHERE id = ? AND balance_cents >= ?",
+            (amount_cents, account_id, amount_cents),
+            Refused("insufficient_balance", "insufficient balance"),
         )
-        db.execute(
+        _write_or_refuse(
+            db,
             "UPDATE bills SET paid_cents = paid_cents + ?"
-            " WHERE account_id = ? AND id = ?",
-            (amount_cents, account_id, bill_id),
+            " WHERE account_id = ? AND id = ? AND paid_cents + ? <= amount_cents",
+            (amount_cents, account_id, bill_id, amount_cents),
+            Refused(
+                "amount_out_of_range", "amount is outside what is left on the bill"
+            ),
         )
         return _record(db, account_id, "pay_card_bill", bill_id, amount_cents)
+
+
+def _write_or_refuse(
+    db: sqlite3.Connection,
+    sql: str,
+    parameters: tuple[str | int, ...],
+    refusal: Refused,
+) -> None:
+    """Run a guarded UPDATE; no row changed means the guard failed."""
+    if db.execute(sql, parameters).rowcount == 0:
+        raise refusal
 
 
 def _record(
