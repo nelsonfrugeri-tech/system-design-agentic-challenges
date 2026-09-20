@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1220" width="1800" height="1220">
-<rect width="1800" height="1220" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2310 1850" width="2310" height="1850">
+<rect width="2310" height="1850" fill="#ffffff"/>
 <defs>
 <marker id="hg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#868e96" stroke-width="1.5"/></marker>
 <marker id="ha" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#c2410c" stroke-width="1.5"/></marker>
 <marker id="hb" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#0f766e" stroke-width="1.5"/></marker>
-</defs><style>text{font-family:"Instrument Sans",system-ui,sans-serif}</style>
+<marker id="m0f766e" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#0f766e" stroke-width="1.5"/></marker><marker id="m495057" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#495057" stroke-width="1.5"/></marker><marker id="m6741d9" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#6741d9" stroke-width="1.5"/></marker><marker id="ma61e4d" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#a61e4d" stroke-width="1.5"/></marker></defs><style>text{font-family:"Instrument Sans",system-ui,sans-serif}</style>
 
 <text x="40" y="62" fill="#5b6472" font-size="13" text-anchor="start" letter-spacing="1.6">1 · QUEM CHAMA</text>
 <rect x="40" y="90" width="280" height="110" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
@@ -13,70 +13,68 @@
 <text x="180" y="170" fill="#5b6472" font-size="15" text-anchor="middle">MCP Inspector</text>
 <rect x="40" y="250" width="280" height="130" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
 <text x="180" y="286" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">make eval</text>
-<text x="180" y="309" fill="#5b6472" font-size="15" text-anchor="middle">10 conversas × 3 repetições</text>
+<text x="180" y="309" fill="#5b6472" font-size="15" text-anchor="middle">13 conversas × 3 repetições</text>
 <text x="180" y="330" fill="#5b6472" font-size="15" text-anchor="middle">2 turnos cada</text>
 <text x="180" y="351" fill="#5b6472" font-size="15" text-anchor="middle">reseta o banco a cada conversa</text>
 
 <text x="360" y="62" fill="#c2410c" font-size="13" text-anchor="start" letter-spacing="1.6">2 · SOLUÇÃO DO CANDIDATO</text>
-<rect x="360" y="70" width="820" height="700" rx="14" fill="none" stroke="#c2410c" stroke-width="2" stroke-dasharray="8 6"/>
-<text x="770" y="795" fill="#5b6472" font-size="15" text-anchor="middle">recebe POST /chat com X-Account-Id, thread_id e message</text>
-<text x="770" y="816" fill="#5b6472" font-size="15" text-anchor="middle">e responde { "reply": "..." }</text>
+<rect x="360" y="70" width="1470" height="1350" rx="14" fill="none" stroke="#c2410c" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="770" y="1446.7" fill="#5b6472" font-size="15" text-anchor="middle">recebe POST /chat com X-Account-Id, thread_id e message</text>
+<text x="770" y="1467.7" fill="#5b6472" font-size="15" text-anchor="middle">e responde { "reply": "..." }</text>
 
-<text x="1240" y="62" fill="#0f766e" font-size="13" text-anchor="start" letter-spacing="1.6">3 · AMBIENTE DO DESAFIO</text>
-<rect x="1240" y="90" width="380" height="190" rx="10" fill="#d5efec" stroke="#0f766e" stroke-width="2"/>
-<text x="1430" y="126" fill="#0f766e" font-size="20" font-weight="600" text-anchor="middle">bank-mcp :8001</text>
-<text x="1430" y="149" fill="#5b6472" font-size="15" text-anchor="middle">bank-mcp · FastMCP · HTTP</text>
-<text x="1430" y="180" fill="#1e1e1e" font-size="15" font-weight="600" text-anchor="middle">consultas</text>
-<text x="1430" y="201" fill="#5b6472" font-size="14" text-anchor="middle">get_balance · list_bills</text>
-<text x="1430" y="220" fill="#5b6472" font-size="14" text-anchor="middle">list_investments · list_operations</text>
-<text x="1430" y="245" fill="#1e1e1e" font-size="15" font-weight="600" text-anchor="middle">movimentos</text>
-<text x="1430" y="266" fill="#5b6472" font-size="14" text-anchor="middle">redeem_investment · pay_card_bill</text>
-<rect x="1240" y="330" width="380" height="130" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
-<text x="1430" y="366" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">bank/core · regras do banco</text>
-<text x="1430" y="389" fill="#5b6472" font-size="15" text-anchor="middle">recusa sem liquidez, sem saldo</text>
-<text x="1430" y="410" fill="#5b6472" font-size="15" text-anchor="middle">ou valor inválido</text>
-<text x="1430" y="431" fill="#5b6472" font-size="15" text-anchor="middle">não confirma nem bloqueia duplicação</text>
-<rect x="1240" y="510" width="380" height="170" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
-<text x="1430" y="546" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">SQLite · bank.db</text>
-<text x="1430" y="569" fill="#5b6472" font-size="15" text-anchor="middle">accounts</text>
-<text x="1430" y="590" fill="#5b6472" font-size="15" text-anchor="middle">bills · investments</text>
-<text x="1430" y="617" fill="#5b6472" font-size="15" text-anchor="middle">operations · o que o dinheiro fez</text>
-<text x="1430" y="638" fill="#5b6472" font-size="15" text-anchor="middle">calls · toda chamada ao MCP</text>
+<text x="1850" y="62" fill="#0f766e" font-size="13" text-anchor="start" letter-spacing="1.6">3 · AMBIENTE DO DESAFIO</text>
+<rect x="1850" y="90" width="380" height="190" rx="10" fill="#d5efec" stroke="#0f766e" stroke-width="2"/>
+<text x="2040" y="126" fill="#0f766e" font-size="20" font-weight="600" text-anchor="middle">bank-mcp :8001</text>
+<text x="2040" y="149" fill="#5b6472" font-size="15" text-anchor="middle">bank/mcp · FastMCP · HTTP</text>
+<text x="2040" y="180" fill="#1e1e1e" font-size="15" font-weight="600" text-anchor="middle">consultas</text>
+<text x="2040" y="201" fill="#5b6472" font-size="14" text-anchor="middle">get_balance · list_bills</text>
+<text x="2040" y="220" fill="#5b6472" font-size="14" text-anchor="middle">list_investments · list_operations</text>
+<text x="2040" y="245" fill="#1e1e1e" font-size="15" font-weight="600" text-anchor="middle">movimentos</text>
+<text x="2040" y="266" fill="#5b6472" font-size="14" text-anchor="middle">redeem_investment · pay_card_bill</text>
+<rect x="1850" y="330" width="380" height="130" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
+<text x="2040" y="366" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">bank/core · regras do banco</text>
+<text x="2040" y="389" fill="#5b6472" font-size="15" text-anchor="middle">recusa sem liquidez, sem saldo</text>
+<text x="2040" y="410" fill="#5b6472" font-size="15" text-anchor="middle">ou valor inválido</text>
+<text x="2040" y="431" fill="#5b6472" font-size="15" text-anchor="middle">não confirma nem bloqueia duplicação</text>
+<rect x="1850" y="510" width="380" height="170" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
+<text x="2040" y="546" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">SQLite · bank.db</text>
+<text x="2040" y="569" fill="#5b6472" font-size="15" text-anchor="middle">accounts · bills</text>
+<text x="2040" y="590" fill="#5b6472" font-size="15" text-anchor="middle">investments · operations</text>
+<text x="2040" y="617" fill="#5b6472" font-size="15" text-anchor="middle">operations · o que o dinheiro fez</text>
+<text x="2040" y="638" fill="#5b6472" font-size="15" text-anchor="middle">calls · toda chamada ao MCP</text>
 
-<text x="360" y="878" fill="#5b6472" font-size="13" text-anchor="start" letter-spacing="1.6">4 · AVALIAÇÃO E TRACES</text>
-<rect x="40" y="910" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
-<text x="230" y="946" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">Avaliação determinística</text>
-<text x="230" y="969" fill="#5b6472" font-size="15" text-anchor="middle">operations e calls por turno</text>
-<text x="230" y="990" fill="#5b6472" font-size="15" text-anchor="middle">executes · must_check</text>
-<text x="230" y="1011" fill="#5b6472" font-size="15" text-anchor="middle">final_state → passed</text>
-<rect x="460" y="910" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
-<text x="650" y="946" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">LLM-as-judge</text>
-<text x="650" y="969" fill="#5b6472" font-size="15" text-anchor="middle">OpenRouter</text>
-<text x="650" y="990" fill="#5b6472" font-size="15" text-anchor="middle">deepseek-v4-flash-0731</text>
-<text x="650" y="1011" fill="#5b6472" font-size="15" text-anchor="middle">critérios do dataset → nota</text>
-<rect x="880" y="910" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
-<text x="1070" y="946" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">Resultados JSONL</text>
-<text x="1070" y="969" fill="#5b6472" font-size="15" text-anchor="middle">evals/results</text>
-<text x="1070" y="990" fill="#5b6472" font-size="15" text-anchor="middle">make report</text>
-<text x="1070" y="1011" fill="#5b6472" font-size="15" text-anchor="middle">acertos e motivo da falha</text>
-<rect x="1300" y="910" width="380" height="140" rx="10" fill="#d5efec" stroke="#0f766e" stroke-width="2"/>
-<text x="1490" y="946" fill="#0f766e" font-size="20" font-weight="600" text-anchor="middle">Langfuse :3000</text>
-<text x="1490" y="969" fill="#5b6472" font-size="15" text-anchor="middle">1 trace por conversa</text>
-<text x="1490" y="990" fill="#5b6472" font-size="15" text-anchor="middle">spans do runner e da sua solução</text>
-<text x="1490" y="1011" fill="#5b6472" font-size="15" text-anchor="middle">pelo header traceparent</text>
+<text x="360" y="1508" fill="#5b6472" font-size="13" text-anchor="start" letter-spacing="1.6">4 · AVALIAÇÃO E TRACES</text>
+<rect x="40" y="1540" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
+<text x="230" y="1576" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">Avaliação determinística</text>
+<text x="230" y="1599" fill="#5b6472" font-size="15" text-anchor="middle">operations e calls por turno</text>
+<text x="230" y="1620" fill="#5b6472" font-size="15" text-anchor="middle">executes · must_check</text>
+<text x="230" y="1641" fill="#5b6472" font-size="15" text-anchor="middle">final_state → passed</text>
+<rect x="460" y="1540" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
+<text x="650" y="1576" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">LLM-as-judge</text>
+<text x="650" y="1599" fill="#5b6472" font-size="15" text-anchor="middle">OpenRouter</text>
+<text x="650" y="1620" fill="#5b6472" font-size="15" text-anchor="middle">deepseek-v4-flash-0731</text>
+<text x="650" y="1641" fill="#5b6472" font-size="15" text-anchor="middle">critérios do dataset → nota</text>
+<rect x="880" y="1540" width="380" height="140" rx="10" fill="#f1f3f5" stroke="#1e1e1e" stroke-width="2"/>
+<text x="1070" y="1576" fill="#1e1e1e" font-size="20" font-weight="600" text-anchor="middle">Resultados JSONL</text>
+<text x="1070" y="1599" fill="#5b6472" font-size="15" text-anchor="middle">evals/results</text>
+<text x="1070" y="1620" fill="#5b6472" font-size="15" text-anchor="middle">make report</text>
+<text x="1070" y="1641" fill="#5b6472" font-size="15" text-anchor="middle">acertos e motivo da falha</text>
+<rect x="1300" y="1540" width="380" height="140" rx="10" fill="#d5efec" stroke="#0f766e" stroke-width="2"/>
+<text x="1490" y="1576" fill="#0f766e" font-size="20" font-weight="600" text-anchor="middle">Langfuse :3000</text>
+<text x="1490" y="1599" fill="#5b6472" font-size="15" text-anchor="middle">1 trace por conversa</text>
+<text x="1490" y="1620" fill="#5b6472" font-size="15" text-anchor="middle">spans do runner e da sua solução</text>
+<text x="1490" y="1641" fill="#5b6472" font-size="15" text-anchor="middle">pelo header traceparent</text>
 
 <polyline points="320,145 356,145" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
 <polyline points="320,315 356,315" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="1180,185 1236,185" fill="none" stroke="#0f766e" stroke-width="2" marker-end="url(#hb)"/>
-<text x="1208" y="172" fill="#0f766e" font-size="13" text-anchor="middle">MCP</text>
-<polyline points="1430,280 1430,326" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="1430,460 1430,506" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="1430,680 1430,890 300,890 300,906" fill="none" stroke="#868e96" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 4" marker-end="url(#hg)"/>
-<text x="900" y="879" fill="#5b6472" font-size="13" text-anchor="middle">o runner lê operations e calls direto do bank.db</text>
-<polyline points="170,380 170,906" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="420,980 456,980" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="840,980 876,980" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
-<polyline points="1260,980 1296,980" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="2040,280 2040,326" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="2040,460 2040,506" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="2040,680 2040,1520 300,1520 300,1536" fill="none" stroke="#868e96" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 4" marker-end="url(#hg)"/>
+<text x="900" y="1509" fill="#5b6472" font-size="13" text-anchor="middle">o runner lê operations e calls direto do bank.db</text>
+<polyline points="170,380 170,1536" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="420,1610 456,1610" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="840,1610 876,1610" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
+<polyline points="1260,1610 1296,1610" fill="none" stroke="#868e96" stroke-width="2" marker-end="url(#hg)"/>
 
-<text x="40" y="1160" fill="#5b6472" font-size="13" text-anchor="start">template: desenhe sua arquitetura dentro do tracejado laranja · verde: ambiente do desafio e observabilidade</text>
+<text x="40" y="1783" fill="#5b6472" font-size="13" text-anchor="start">template: desenhe sua arquitetura dentro do tracejado laranja · verde: ambiente do desafio e observabilidade</text>
 </svg>
