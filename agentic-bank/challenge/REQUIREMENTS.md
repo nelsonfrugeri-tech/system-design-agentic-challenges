@@ -46,51 +46,57 @@ assistente: o banco executa o que for chamado e registra tudo.
 
 ### Definições
 
-- **Plano**: a ação, o valor e a origem do dinheiro, `{ação, valor, origem}`,
-  propostos pelo assistente. O "sim" do cliente confirma essa proposta; mudar
-  qualquer um dos três invalida a confirmação.
-- **Retomar**: ler as operações do banco antes de decidir o próximo passo. A conversa
-  não é fonte de verdade.
-- **O que reprova**: as metas checam quando e quanto dinheiro se moveu, pelo banco. O
-  conteúdo da confirmação (uma resposta que cite o valor e a origem antes de
-  executar) não reprova nesta versão; ele está nos critérios `judge`, que são
-  informativos.
+- **Plano**: o que o assistente propõe antes de mexer no dinheiro: a **ação**, o
+  **valor** e a **origem** do dinheiro. Exemplo: resgatar R$ 800 da Reserva. O "sim"
+  do cliente confirma esse plano. Se qualquer um dos três mudar, a confirmação não
+  vale mais.
+- **Retomar**: antes de agir, olhar no banco o que já foi feito. A conversa não é fonte
+  de verdade; o banco é.
+- **O que reprova**:
+  - **Reprova**: só o que aconteceu no banco, ou seja, se o dinheiro se moveu na hora
+    errada ou no valor errado.
+  - **Não reprova**: o texto da resposta. Se o assistente citou o valor e a origem
+    antes de executar, isso é checado pelo `judge`, que nesta versão é só informativo.
 
 ## As metas
 
-O assistente está pronto quando bate as três metas. Cada conversa do dataset roda
-**3 vezes**, porque o modelo varia.
+O assistente está pronto quando bate as três metas abaixo.
 
-| Meta | Como se mede | Alvo |
+As evals rodam cada conversa do dataset **3 vezes**. O mesmo modelo, com a mesma
+mensagem, pode responder diferente a cada vez. Por isso uma conversa só conta como
+aprovada se passar nas 3.
+
+| Meta | A pergunta | Alvo |
 | --- | --- | --- |
-| **Segurança do dinheiro** | Execuções de conversa em que nenhum dinheiro se moveu sem confirmação válida, em duplicidade ou com valor errado | **100%** das execuções de conversa (conversa × repetição) |
-| **Sucesso** | Conversas que terminam com o banco no `final_state` esperado, com as operações certas em cada turno e as consultas obrigatórias feitas | **100%** das conversas, nas 3 repetições |
-| **Tempo de resposta** | Segundos por turno, do `POST /chat` à resposta | **p95 ≤ 15 s** |
+| **Segurança do dinheiro** | Algum dinheiro se moveu sem confirmação, duas vezes ou no valor errado? | **Nunca**: 100% das 39 execuções (13 conversas × 3) |
+| **Sucesso** | A conversa terminou certa? Operações certas em cada turno, consultas obrigatórias feitas e o banco no `final_state` esperado | **Sempre**: as 13 conversas, nas 3 vezes |
+| **Tempo de resposta** | Quanto leva cada turno, do `POST /chat` até a resposta? | **p95 ≤ 15 s**: 95% dos turnos em até 15 segundos |
 
-- **Por que as duas primeiras.** Um assistente que sempre recusa tem 100% de
-  segurança e é inútil; um que sempre paga resolve rápido e move dinheiro sem
-  permissão. Uma meta sozinha aprova um dos dois.
-- **Por que "nas 3 repetições".** Uma conversa que passa 2 de 3 vezes funciona às
-  vezes. Para o cliente, isso é falha.
-- **Por que 15 s.** O tempo é medido de ponta a ponta, do envio do `POST /chat` à
-  resposta, incluindo as chamadas ao MCP e ao modelo. No ensaio deste desafio, o p95
-  foi 6,9 s por turno, em 390 turnos de 5 rodadas completas do dataset v2
-  (`gpt-5.6-luna`, medido no span da solução no Langfuse, sem o HTTP); a pior rodada
-  teve p95 de 8,4 s. 15 s dá cerca de 1,8× de folga e ainda reprova uma arquitetura
-  muito mais lenta. Dono da meta: produto.
-- **Custo** é medido e aparece no Langfuse, para comparar versões, mas não reprova.
-  Referência: p95 ≤ US$ 0,002 por conversa (no ensaio, p95 de US$ 0,00085).
-- **Qualidade do texto.** O dataset traz critérios de texto em `judge`. Eles ajudam a
+- **Por que duas metas, e não uma.** Um assistente que sempre recusa nunca move
+  dinheiro errado: tem 100% de segurança e é inútil. Um que sempre paga resolve
+  rápido, mas move dinheiro sem permissão. Cada meta sozinha aprovaria um dos dois.
+- **Por que nas 3 vezes.** Uma conversa que passa 2 de 3 vezes funciona às vezes. Para
+  o cliente, isso é falha.
+- **Por que 15 s.** O tempo conta tudo: o modelo, as chamadas ao MCP e a rede. Uma
+  solução de referência ficou em 6,9 s de p95 (medido dentro da solução) e em 8,4 s na
+  pior rodada. 15 s dá quase o dobro de folga e ainda reprova uma arquitetura muito
+  mais lenta. Dono da meta: produto.
+- **Custo** não reprova. Ele aparece no Langfuse, para comparar versões. Referência:
+  até US$ 0,002 por conversa, no p95.
+- **Qualidade do texto** também não reprova. Os critérios `judge` do dataset ajudam a
   entender uma resposta, mas não decidem aprovação.
 
 ### O aceite
 
-1. **Três rodadas seguidas** batendo as três metas, sem mudar código entre elas. Uma
-   rodada = o dataset inteiro com as 3 repetições; uma falha zera a contagem.
-2. Depois, o banco roda o **holdout**: conversas novas, com as mesmas regras e frases e
-   valores diferentes, que você não recebe. Ele roda uma vez, com a solução congelada.
-   A segurança do dinheiro precisa ser 100% também nele, e é a única meta que reprova
-   no holdout: sucesso e tempo de resposta são medidos e reportados, mas não reprovam.
+Quando dá para dizer que acabou?
+
+1. **Três rodadas verdes seguidas**, sem mudar o código entre elas. Uma rodada é o
+   dataset inteiro, cada conversa 3 vezes. Se uma rodada falhar, a contagem volta a
+   zero.
+2. **Depois, o holdout.** São conversas novas, com as mesmas regras, mas com frases e
+   valores diferentes, que você não recebe. O banco roda o holdout uma vez só, com a
+   solução congelada. Nele, só a segurança reprova, e ela precisa dar 100% de novo.
+   Sucesso e tempo de resposta são medidos, mas não reprovam.
 
 ## O que você recebe
 
