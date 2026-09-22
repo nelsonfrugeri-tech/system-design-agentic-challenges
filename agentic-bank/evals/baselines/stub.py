@@ -1,6 +1,8 @@
 """A fake assistant that honours the solution contract, to prove the harness.
 
-`oracle` does the turn's `must_check` reads and then exactly its `executes`.
+`refuse` answers without calling the bank. `pay` pays, on the first turn and
+without confirming, the whole remaining amount of the first bill. `oracle` does
+the turn's `must_check` reads and then exactly its `executes`.
 It talks to the bank through MCP with X-Account-Id, like the real solution, so
 the bank records its calls. `/stats` exposes what each POST carried.
 """
@@ -27,8 +29,8 @@ from starlette.routing import Route
 
 from harness.dataset import DATASET, Conversation, Dataset, Movement, load_dataset
 
-type Mode = Literal["oracle"]
-MODES: tuple[Mode, ...] = ("oracle",)
+type Mode = Literal["refuse", "pay", "oracle"]
+MODES: tuple[Mode, ...] = ("refuse", "pay", "oracle")
 BANK_URL = "http://127.0.0.1:8001/mcp"
 
 
@@ -86,6 +88,46 @@ def movement_arguments(movement: Movement) -> dict[str, str | int]:
 type Behaviour = Callable[[str, str, int], Awaitable[str]]
 
 
+async def refuse(account: str, message: str, turn: int) -> str:
+    return "refuse: nothing done"
+
+
+def pay(bank_url: str) -> Behaviour:
+    async def reply(account: str, message: str, turn: int) -> str:
+        if turn > 0:
+            return "pay: already paid"
+        bills = await call_bank(bank_url, account, "list_bills", {})
+        first = _first_bill(bills)
+        result = await call_bank(
+            bank_url,
+            account,
+            "pay_card_bill",
+            {"bill_id": first.id, "amount_cents": first.remaining_cents},
+        )
+        return "pay: refused" if result.isError else f"pay: paid {first.id}"
+
+    return reply
+
+
+class _Bill(BaseModel):
+    id: str
+    amount_cents: int
+    paid_cents: int
+
+    @property
+    def remaining_cents(self) -> int:
+        return self.amount_cents - self.paid_cents
+
+
+class _Bills(BaseModel):
+    result: list[_Bill]
+
+
+def _first_bill(result: CallToolResult) -> _Bill:
+    # FastMCP wraps a list return as {"result": [...]} (bank-mcp README, "Saídas").
+    return _Bills.model_validate(result.structuredContent).result[0]
+
+
 def oracle(dataset: Dataset, bank_url: str) -> Behaviour:
     by_account: dict[str, Conversation] = {c.account: c for c in dataset.conversations}
 
@@ -105,7 +147,11 @@ def oracle(dataset: Dataset, bank_url: str) -> Behaviour:
 def create_app(
     mode: Mode, *, dataset: Dataset, bank_url: str, delay_s: float = 0.0
 ) -> Starlette:
-    behaviours: dict[Mode, Behaviour] = {"oracle": oracle(dataset, bank_url)}
+    behaviours: dict[Mode, Behaviour] = {
+        "refuse": refuse,
+        "pay": pay(bank_url),
+        "oracle": oracle(dataset, bank_url),
+    }
     behaviour = behaviours[mode]
     stats = Stats()
 
