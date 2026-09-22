@@ -11,6 +11,7 @@ from harness.dataset import load_dataset
 from harness.report import AttemptLine, Report, ReportLine, streak
 from harness.run import main, new_round, run_round
 from harness.solution import Solution
+from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer
 from tests.test_run import read_lines, subset
 
@@ -122,7 +123,7 @@ def test_turns_slower_than_15_s_turn_the_p95_gate_red(
         dataset=dataset,
         bank=bank_server.bank,
         solution=Solution(stub.url),
-        trace_headers=lambda _: {},
+        tracing=Tracing.disabled(),
         results=tmp_path / "results",
         repetitions=1,
     )

@@ -15,6 +15,7 @@ from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, ReportLine
 from harness.run import main, new_round, run_round
 from harness.solution import ChatResult, Solution
+from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
 
 type StartStub = Callable[..., StubServer]
@@ -233,7 +234,7 @@ def test_every_account_is_reset_after_the_round_even_when_it_fails(
             dataset=dataset,
             bank=bank_server.bank,
             solution=PaysThenCrashes(bank_server.url),
-            trace_headers=lambda _: {},
+            tracing=Tracing.disabled(),
             results=tmp_path / "results",
         )
 

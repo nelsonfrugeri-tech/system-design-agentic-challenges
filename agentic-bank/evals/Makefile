@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help sync format format-check lint typecheck test check pre-commit eval stub e2e
+.PHONY: help sync env format format-check lint typecheck test check pre-commit eval stub e2e
 
 # The harness reads $(BANK_DATA_DIR)/bank.db, the same file bank-mcp serves.
 BANK_DATA_DIR ?= $(abspath ../.data)
@@ -12,11 +12,14 @@ kind ?= dev
 dataset ?= $(DATASET)
 mode ?= oracle
 port ?= 8000
+# Written by `make langfuse` at the repository root; outside Git.
+LANGFUSE_ENV ?= $(abspath ../../infra/langfuse/.env)
 
 export BANK_DATA_DIR BANK_URL
 
 help:
 	@echo 'sync          Install locked dependencies with uv'
+	@echo 'env           Write .env with the local Langfuse keys, from infra/langfuse/.env'
 	@echo 'format        Format Python with Black'
 	@echo 'format-check  Check Black formatting'
 	@echo 'lint          Run Ruff'
@@ -30,6 +33,11 @@ help:
 
 sync:
 	uv sync --locked
+
+env:
+	@test -f "$(LANGFUSE_ENV)" || { echo "$(LANGFUSE_ENV) not found: run make langfuse at the repository root" >&2; exit 1; }
+	@grep -E '^LANGFUSE_(HOST|PUBLIC_KEY|SECRET_KEY)=' "$(LANGFUSE_ENV)" > .env
+	@echo "wrote .env: LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY"
 
 format:
 	uv run --locked black harness baselines tests
@@ -58,6 +66,7 @@ pre-commit:
 
 eval:
 	@shasum -a 256 "$(dataset)"
+	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; \
 	uv run --locked python -m harness.run --name "$(name)" --kind "$(kind)" --dataset "$(dataset)" --solution-url "$(SOLUTION_URL)"
 
 e2e:

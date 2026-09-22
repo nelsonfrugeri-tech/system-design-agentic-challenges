@@ -5,9 +5,9 @@ the gates of REQUIREMENTS.md, and the acceptance sequence rebuilt from results/.
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field, TypeAdapter, computed_field
+from pydantic import computed_field
 
 from harness.checks import Verdict
 from harness.dataset import Conversation, Frozen
@@ -41,6 +41,7 @@ class Judged(Frozen):
 
 P95_LIMIT_S = 15.0
 ACCEPTANCE_ROUNDS = 3
+DIRTY = "-dirty"
 
 
 class Gate(Frozen):
@@ -185,8 +186,16 @@ def _ratio(conversations: Sequence[Conversation], passed: dict[str, bool]) -> Ra
     )
 
 
-type ResultLine = Annotated[AttemptLine | ReportLine, Field(discriminator="type")]
-_LINE: TypeAdapter[ResultLine] = TypeAdapter(ResultLine)
+class _Passed(Frozen):
+    # A report written before the gates existed has no verdict: never green.
+    passed: bool = False
+
+
+class _SequenceLine(Stamp):
+    """Only what the sequence needs, so older Attempt lines still count."""
+
+    type: Literal["attempt", "report"]
+    report: _Passed | None = None
 
 
 class Streak(Frozen):
@@ -203,17 +212,18 @@ class Streak(Frozen):
 def streak(results: Path) -> Streak:
     """Green dev rounds in a row, ending at the latest dev round, on its commit
     and dataset. Rebuilt only from the stamps on each line; a line without one
-    is rejected, and a round without its Report line counts as red. Round ids
+    is rejected, a round without its Report line counts as red, and a round of
+    uncommitted code never counts. Round ids
     start with their UTC start time, so they sort in run order.
     """
     stamps: dict[str, Stamp] = {}
     passed: dict[str, bool] = {}
     for path in sorted(results.glob("*.jsonl")):
         for raw in path.read_text().splitlines():
-            line = _LINE.validate_json(raw)
+            line = _SequenceLine.model_validate_json(raw)
             stamps[line.round_id] = Stamp.of_line(line)
             passed.setdefault(line.round_id, False)
-            if isinstance(line, ReportLine):
+            if line.report is not None:
                 passed[line.round_id] = line.report.passed
     dev = [stamps[id] for id in sorted(stamps) if stamps[id].kind == "dev"]
     if not dev:
@@ -225,7 +235,8 @@ def streak(results: Path) -> Streak:
             latest.commit,
             latest.dataset_sha256,
         )
-        if not (same and passed[stamp.round_id]):
+        dirty = stamp.commit.endswith(DIRTY)
+        if dirty or not (same and passed[stamp.round_id]):
             break
         count += 1
     return Streak(

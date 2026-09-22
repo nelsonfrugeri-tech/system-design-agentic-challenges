@@ -59,6 +59,7 @@ def judged(
         conversation_id=conversation_id,
         repetition=1,
         thread_id="t",
+        trace_id=None,
         account="a",
         initial_operations=(),
         turns=(
@@ -228,6 +229,11 @@ def rounds(results: Path, specs: Sequence[dict[str, object]]) -> int:
             3,
             id="holdout-is-not-in-the-sequence",
         ),
+        pytest.param(
+            [{"passed": True, "commit": "c1-dirty"}] * 3,
+            0,
+            id="uncommitted-code-never-counts",
+        ),
     ],
 )
 def test_the_acceptance_sequence(
@@ -282,3 +288,33 @@ def test_a_round_that_never_wrote_its_report_breaks_the_sequence(
 )
 def test_p95_nearest_rank_when_095n_is_an_integer(count: int, expected: float) -> None:
     assert p95([float(i) for i in range(1, count + 1)]) == expected
+
+
+def test_the_sequence_reads_only_the_stamps_of_older_attempt_lines(
+    tmp_path: Path,
+) -> None:
+    for index in range(3):
+        write_round(tmp_path, index, passed=True)
+    (path,) = sorted(tmp_path.glob("*.jsonl"))[:1]
+    older = judged("a").attempt.model_dump()
+    del older["trace_id"]  # written before the field existed
+    stamp = json.loads(path.read_text())
+    attempt = {k: stamp[k] for k in ("round_id", "commit", "dataset_sha256", "kind")}
+    path.write_text(
+        json.dumps({"type": "attempt", **attempt, "attempt": older, "verdict": {}})
+        + "\n"
+        + path.read_text()
+    )
+
+    assert streak(tmp_path).count == 3
+
+
+def test_a_report_without_a_verdict_counts_as_red(tmp_path: Path) -> None:
+    for index in range(3):
+        write_round(tmp_path, index, passed=True)
+    path = sorted(tmp_path.glob("*.jsonl"))[-1]
+    line = json.loads(path.read_text())
+    del line["report"]["passed"]  # written before the gates existed
+    path.write_text(json.dumps(line) + "\n")
+
+    assert streak(tmp_path).count == 0

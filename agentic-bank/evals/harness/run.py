@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -35,13 +35,12 @@ from harness.report import (
     summarize,
 )
 from harness.solution import SOLUTION_URL, Solution
+from harness.tracing import Tracing, from_environment
 
 REPETITIONS = 3
 BANK_URL = "http://127.0.0.1:8001/mcp"
 RESULTS = Path(__file__).parents[1] / "results"
 PREFLIGHT_TIMEOUT_S = 1.0
-
-type TraceHeaders = Callable[[str], dict[str, str]]
 
 
 class PreflightFailed(Exception):
@@ -88,7 +87,7 @@ def run_round(
     dataset: Dataset,
     bank: Bank,
     solution: Solution,
-    trace_headers: TraceHeaders,
+    tracing: Tracing,
     results: Path,
     repetitions: int = REPETITIONS,
 ) -> tuple[Path, Report]:
@@ -108,7 +107,7 @@ def run_round(
                     dataset=dataset,
                     bank=bank,
                     solution=solution,
-                    headers=trace_headers(round_.id),
+                    tracing=tracing,
                 )
                 verdict = judge(
                     conversation,
@@ -127,6 +126,7 @@ def run_round(
             )
     finally:
         bank.reset_all(dataset.path)
+        tracing.flush()
     return path, report
 
 
@@ -138,7 +138,7 @@ def run_attempt(
     dataset: Dataset,
     bank: Bank,
     solution: Solution,
-    headers: dict[str, str],
+    tracing: Tracing,
 ) -> Attempt:
     account = conversation.account
     started = time.perf_counter()
@@ -147,30 +147,37 @@ def run_attempt(
     initial_operations = bank.operations(account)
     thread_id = str(uuid.uuid4())
     turns: list[TurnRecord] = []
-    for index, turn in enumerate(conversation.turns, start=1):
-        marks = bank.marks()
-        result = solution.chat(
-            thread_id=thread_id,
-            message=turn.message,
-            headers={**headers, "X-Account-Id": account},
-        )
-        activity = bank.since(account, marks)
-        turns.append(
-            TurnRecord(
-                index=index,
-                message=turn.message,
-                reply=result.reply,
-                elapsed_s=result.elapsed_s,
-                facts=TurnFacts(
-                    moved=activity.moved, calls=activity.calls, outcome=result.outcome
-                ),
+    with tracing.attempt(
+        round_id=round_id, conversation_id=conversation.id, repetition=repetition
+    ) as trace_id:
+        for index, turn in enumerate(conversation.turns, start=1):
+            marks = bank.marks()
+            with tracing.turn(index) as headers:
+                result = solution.chat(
+                    thread_id=thread_id,
+                    message=turn.message,
+                    headers={**headers, "X-Account-Id": account},
+                )
+            activity = bank.since(account, marks)
+            turns.append(
+                TurnRecord(
+                    index=index,
+                    message=turn.message,
+                    reply=result.reply,
+                    elapsed_s=result.elapsed_s,
+                    facts=TurnFacts(
+                        moved=activity.moved,
+                        calls=activity.calls,
+                        outcome=result.outcome,
+                    ),
+                )
             )
-        )
     return Attempt(
         round_id=round_id,
         conversation_id=conversation.id,
         repetition=repetition,
         thread_id=thread_id,
+        trace_id=trace_id,
         account=account,
         initial_operations=initial_operations,
         turns=tuple(turns),
@@ -185,14 +192,20 @@ def _schedule(dataset: Dataset, repetitions: int) -> Iterator[tuple[Conversation
             yield conversation, repetition
 
 
-def git_commit() -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-        cwd=Path(__file__).parent,
-    ).stdout.strip()
+def git_commit(repository: Path = Path(__file__).parent) -> str:
+    """HEAD, marked `-dirty` when tracked or untracked files differ from it:
+    such a round tests code no commit holds, so it never counts toward acceptance."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repository), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    head = git("rev-parse", "HEAD")
+    return f"{head}-dirty" if git("status", "--porcelain") else head
 
 
 def new_round(name: str, kind: Kind, dataset: Dataset) -> Round:
@@ -234,13 +247,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         for line in failed.missing:
             print(f"preflight: {line}", file=sys.stderr)
         return 2
+    tracing, warning = from_environment()
+    if warning:
+        print(
+            f"preflight: warning: {warning}; the round runs without traces",
+            file=sys.stderr,
+        )
     round_ = new_round(args.name, args.kind, dataset)
     path, report = run_round(
         round_,
         dataset=dataset,
         bank=bank,
         solution=solution,
-        trace_headers=lambda _: {},
+        tracing=tracing,
         results=args.results,
     )
     sequence = streak(args.results) if round_.kind == "dev" else None

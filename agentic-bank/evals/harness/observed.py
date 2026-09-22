@@ -45,6 +45,7 @@ class Attempt(Frozen):
     conversation_id: str
     repetition: int
     thread_id: str
+    trace_id: str | None
     account: str
     initial_operations: tuple[Movement, ...]
     turns: tuple[TurnRecord, ...]
