@@ -148,16 +148,21 @@ def run_attempt(
     thread_id = str(uuid.uuid4())
     turns: list[TurnRecord] = []
     with tracing.attempt(
-        round_id=round_id, conversation_id=conversation.id, repetition=repetition
+        round_id=round_id,
+        conversation_id=conversation.id,
+        repetition=repetition,
+        account=account,
+        thread_id=thread_id,
     ) as trace_id:
         for index, turn in enumerate(conversation.turns, start=1):
             marks = bank.marks()
-            with tracing.turn(index) as headers:
+            with tracing.turn(index, turn.message) as traced:
                 result = solution.chat(
                     thread_id=thread_id,
                     message=turn.message,
-                    headers={**headers, "X-Account-Id": account},
+                    headers={**traced.headers, "X-Account-Id": account},
                 )
+                traced.answered(result)
             activity = bank.since(account, marks)
             turns.append(
                 TurnRecord(

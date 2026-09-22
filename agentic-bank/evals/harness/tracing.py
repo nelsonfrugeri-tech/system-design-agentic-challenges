@@ -11,11 +11,31 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import httpx
-from langfuse import Langfuse, propagate_attributes
+from langfuse import Langfuse, LangfuseSpan, propagate_attributes
 from opentelemetry import propagate
+
+from harness.solution import ChatResult
 
 ENVIRONMENT = "evals"
 HEALTH_TIMEOUT_S = 1.0
+
+
+class TurnTrace:
+    """The headers a turn's POST carries, and where its answer is recorded."""
+
+    def __init__(self, headers: dict[str, str], span: LangfuseSpan | None) -> None:
+        self.headers = headers
+        self.span = span
+
+    def answered(self, result: ChatResult) -> None:
+        if self.span is not None:
+            self.span.update(
+                output={
+                    "reply": result.reply,
+                    "outcome": result.outcome,
+                    "elapsed_s": result.elapsed_s,
+                }
+            )
 
 
 class Tracing:
@@ -34,7 +54,13 @@ class Tracing:
 
     @contextmanager
     def attempt(
-        self, *, round_id: str, conversation_id: str, repetition: int
+        self,
+        *,
+        round_id: str,
+        conversation_id: str,
+        repetition: int,
+        account: str,
+        thread_id: str,
     ) -> Iterator[str | None]:
         """Yield the Attempt's trace id, which is also its session id."""
         if self.client is None:
@@ -46,6 +72,12 @@ class Tracing:
                 trace_context={"trace_id": trace_id},
                 name="attempt",
                 as_type="span",
+                input={
+                    "conversation_id": conversation_id,
+                    "repetition": repetition,
+                    "account": account,
+                    "thread_id": thread_id,
+                },
             ),
             propagate_attributes(
                 session_id=trace_id,
@@ -63,17 +95,18 @@ class Tracing:
             yield trace_id
 
     @contextmanager
-    def turn(self, index: int) -> Iterator[dict[str, str]]:
-        """Yield the W3C headers the POST of this turn must carry."""
+    def turn(self, index: int, message: str) -> Iterator[TurnTrace]:
+        """Yield the W3C headers the POST of this turn must carry; the message is
+        the span's input and the answer its output, so the session shows both."""
         if self.client is None:
-            yield {}
+            yield TurnTrace({}, None)
             return
         with self.client.start_as_current_observation(
-            name=f"turn {index}", as_type="span"
-        ):
+            name=f"turn {index}", as_type="span", input={"message": message}
+        ) as span:
             headers: dict[str, str] = {}
             propagate.inject(headers)
-            yield headers
+            yield TurnTrace(headers, span)
 
     def flush(self) -> None:
         if self.client is not None:
