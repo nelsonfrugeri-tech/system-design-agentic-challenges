@@ -1,0 +1,64 @@
+.DEFAULT_GOAL := help
+
+.PHONY: help sync format format-check lint typecheck test check pre-commit eval stub e2e
+
+# The harness reads $(BANK_DATA_DIR)/bank.db, the same file bank-mcp serves.
+BANK_DATA_DIR ?= $(abspath ../.data)
+BANK_URL ?= http://127.0.0.1:8001/mcp
+SOLUTION_URL ?= http://127.0.0.1:8000
+DATASET ?= datasets/conversations.json
+name ?= dev
+kind ?= dev
+dataset ?= $(DATASET)
+mode ?= oracle
+port ?= 8000
+
+export BANK_DATA_DIR BANK_URL
+
+help:
+	@echo 'sync          Install locked dependencies with uv'
+	@echo 'format        Format Python with Black'
+	@echo 'format-check  Check Black formatting'
+	@echo 'lint          Run Ruff'
+	@echo 'typecheck     Run strict mypy'
+	@echo 'test          Unit and local integration tests (spawn bank-mcp and the stub)'
+	@echo 'check         format-check, lint, typecheck, test'
+	@echo 'pre-commit    format, then check'
+	@echo 'eval          One round against $(SOLUTION_URL): make eval name=<name> [kind=holdout dataset=<path>]'
+	@echo 'stub          Serve a fake assistant: make stub mode=oracle|refuse|pay [port=8000]'
+	@echo 'e2e           Rounds of the three stubs against a private bank-mcp; checks KR1 and KR2'
+
+sync:
+	uv sync --locked
+
+format:
+	uv run --locked black harness baselines tests
+
+format-check:
+	uv run --locked black --check harness baselines tests
+
+lint:
+	uv run --locked ruff check harness baselines tests
+
+typecheck:
+	uv run --locked mypy
+
+test:
+	uv run --locked pytest -q
+
+check:
+	$(MAKE) format-check
+	$(MAKE) lint
+	$(MAKE) typecheck
+	$(MAKE) test
+
+pre-commit:
+	$(MAKE) format
+	$(MAKE) check
+
+eval:
+	@shasum -a 256 "$(dataset)"
+	uv run --locked python -m harness.run --name "$(name)" --kind "$(kind)" --dataset "$(dataset)" --solution-url "$(SOLUTION_URL)"
+
+stub:
+	uv run --locked python -m baselines.stub --mode "$(mode)" --port "$(port)" --bank-url "$(BANK_URL)" --dataset "$(dataset)"
