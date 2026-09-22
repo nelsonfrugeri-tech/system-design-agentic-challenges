@@ -9,7 +9,7 @@ import pytest
 
 from harness.dataset import load_dataset
 from harness.report import AttemptLine, Report, ReportLine, streak
-from harness.run import main, new_round, run_round
+from harness.run import git_commit, main, new_round, run_round
 from harness.solution import Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer
@@ -56,6 +56,9 @@ def round_of(
 def test_three_oracle_rounds_are_green_and_reach_acceptance(
     bank_server: BankServer, start_stub: StartStub, tmp_path: Path
 ) -> None:
+    assert not git_commit().endswith(
+        "-dirty"
+    ), "S14 counts rounds on one commit: commit or stash your changes first"
     stub = start_stub("oracle")
     results = tmp_path / "results"
 

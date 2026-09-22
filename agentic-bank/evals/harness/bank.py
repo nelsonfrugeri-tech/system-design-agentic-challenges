@@ -8,6 +8,7 @@ one turn per account at a time (REQUIREMENTS.md, "Estado do banco").
 import json
 import sqlite3
 import subprocess
+import time
 from collections.abc import Sequence
 from contextlib import closing
 from pathlib import Path
@@ -52,6 +53,25 @@ class Bank:
         (rowid,) = self._one("SELECT COALESCE(MAX(rowid), 0) FROM operations")
         return Marks(calls_id=calls_id, operations_rowid=rowid)
 
+    def settle(self, account: str, *, quiet_s: float, cap_s: float) -> bool:
+        """Wait until the account records no new call or operation for `quiet_s`,
+        at most `cap_s`. True when it went quiet; False when it kept moving.
+
+        Quiet is a heuristic end of turn: a solution silent for longer than
+        `quiet_s` that writes afterwards is not caught.
+        """
+        deadline = time.monotonic() + cap_s
+        last = self._activity(account)
+        quiet_since = time.monotonic()
+        while time.monotonic() < deadline:
+            time.sleep(0.05)
+            now = self._activity(account)
+            if now != last:
+                last, quiet_since = now, time.monotonic()
+            elif time.monotonic() - quiet_since >= quiet_s:
+                return True
+        return False
+
     def since(self, account: str, marks: Marks) -> TurnActivity:
         """The account's operations and calls above the marks, in bank order."""
         moved = self._all(
@@ -93,6 +113,14 @@ class Bank:
             bill_paid_cents=_amounts(bills),
             investment_balance_cents=_amounts(investments),
         )
+
+    def _activity(self, account: str) -> tuple[object, ...]:
+        rows = self._all(
+            "SELECT (SELECT COALESCE(MAX(id), 0) FROM calls WHERE account_id = ?),"
+            " (SELECT COALESCE(MAX(rowid), 0) FROM operations WHERE account_id = ?)",
+            (account, account),
+        )
+        return rows[0]
 
     def _seed(self, account: str, dataset: Path) -> None:
         subprocess.run(

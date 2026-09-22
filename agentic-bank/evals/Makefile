@@ -68,7 +68,7 @@ eval:
 	@shasum -a 256 "$(dataset)"
 	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; \
 	uv run --locked python -m harness.run --name "$(name)" --kind "$(kind)" --dataset "$(dataset)" --solution-url "$(SOLUTION_URL)"; \
-	code=$$?; echo "harness exit $$code (0 approved, 1 a gate failed, 2 preflight)"; exit $$code
+	code=$$?; echo "harness exit $$code (0 approved, 1 a gate failed, 2 preflight, 3 harness error)"; exit $$code
 
 e2e:
 	uv run --locked pytest -q -m e2e

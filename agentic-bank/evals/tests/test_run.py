@@ -110,23 +110,74 @@ def test_a_turn_over_the_timeout_is_a_timeout_and_is_not_resent(
     dataset = subset(tmp_path, ["ambiguous-bill"])
     stub = start_stub("refuse", delay_s=1.5)
 
-    code = run(bank_server, stub, dataset, tmp_path / "results", "--timeout-s", "0.5")
-    time.sleep(1.5)  # let every delayed request land in the stub
-
-    attempts = [
-        line for line in lines(tmp_path / "results") if isinstance(line, AttemptLine)
-    ]
-    report = next(
-        line for line in lines(tmp_path / "results") if isinstance(line, ReportLine)
+    code = run(
+        bank_server,
+        stub,
+        dataset,
+        tmp_path / "results",
+        "--timeout-s",
+        "0.5",
+        "--quiet-s",
+        "1.5",
     )
+
+    parsed = lines(tmp_path / "results")
+    attempts = [line for line in parsed if isinstance(line, AttemptLine)]
+    report = next(line for line in parsed if isinstance(line, ReportLine))
     turns = [t for a in attempts for t in a.attempt.turns]
     assert code == 1
+    assert [t.index for t in turns] == [1, 1, 1]
     assert {t.facts.outcome for t in turns} == {"timeout"}
     assert all(0.5 <= t.elapsed_s < 1.5 for t in turns)
     assert report.report.success.passed == 0
     assert 0.5 <= report.report.p95_s < 1.5
     posts = Counter((r["thread_id"], r["turn"]) for r in stub.received())
-    assert len(posts) == 6 and set(posts.values()) == {1}
+    assert len(posts) == 3 and set(posts.values()) == {1}
+
+
+def test_money_moved_after_a_timeout_belongs_to_the_turn_that_timed_out(
+    bank_server: BankServer, start_stub: StartStub, tmp_path: Path
+) -> None:
+    dataset = subset(tmp_path, ["clear-full-payment"])
+    stub = start_stub("pay", delay_s=1.0)
+
+    run(
+        bank_server,
+        stub,
+        dataset,
+        tmp_path / "results",
+        "--timeout-s",
+        "0.3",
+        "--quiet-s",
+        "1.5",
+    )
+
+    attempts = [a for a in lines(tmp_path / "results") if isinstance(a, AttemptLine)]
+    assert len(attempts) == 3
+    for attempt in attempts:
+        (turn,) = attempt.attempt.turns
+        assert turn.facts.outcome == "timeout"
+        assert [m.amount_cents for m in turn.facts.moved] == [300000]
+        assert [(v.kind, v.turn) for v in attempt.verdict.violations] == [
+            ("Unauthorized", 1)
+        ]
+
+
+def test_a_harness_error_exits_3(
+    bank_server: BankServer,
+    start_stub: StartStub,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dataset = subset(tmp_path, ["ambiguous-bill"])
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "0-corrupt.jsonl").write_text("{}\n")
+
+    code = run(bank_server, start_stub("refuse"), dataset, results)
+
+    assert code == 3
+    assert "harness error" in capsys.readouterr().err
 
 
 # S19

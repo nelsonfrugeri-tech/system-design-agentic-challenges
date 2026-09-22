@@ -2,6 +2,8 @@
 
 import asyncio
 import sqlite3
+import threading
+import time
 from contextlib import closing
 
 import pytest
@@ -125,3 +127,33 @@ def test_the_fixture_operation_at_the_mark_is_not_the_turn(
     )
 
     assert bank.since("acc-1010", marks).moved == (PAY_FULL,)
+
+
+def test_settle_waits_for_a_quiet_account(bank_server: BankServer) -> None:
+    bank = bank_server.bank
+    bank.reset(["acc-1003"], DATASET)
+
+    started = time.monotonic()
+    assert bank.settle("acc-1003", quiet_s=0.3, cap_s=2.0)
+    assert time.monotonic() - started < 1.0
+
+
+def test_settle_gives_up_on_an_account_that_keeps_moving(
+    bank_server: BankServer,
+) -> None:
+    bank = bank_server.bank
+    bank.reset(["acc-1003"], DATASET)
+    stop = threading.Event()
+
+    def busy() -> None:
+        while not stop.is_set():
+            asyncio.run(call_bank(bank_server.url, "acc-1003", "get_balance", {}))
+            time.sleep(0.1)
+
+    worker = threading.Thread(target=busy)
+    worker.start()
+    try:
+        assert not bank.settle("acc-1003", quiet_s=0.5, cap_s=1.5)
+    finally:
+        stop.set()
+        worker.join()

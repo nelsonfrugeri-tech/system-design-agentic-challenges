@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from harness.bank import DATA_DIR, Bank
 from harness.checks import judge
-from harness.dataset import DATASET, Conversation, Dataset, load_dataset
+from harness.dataset import DATASET, Conversation, Dataset, Frozen, load_dataset
 from harness.observed import Attempt, TurnFacts, TurnRecord
 from harness.report import (
     AttemptLine,
@@ -41,6 +41,18 @@ REPETITIONS = 3
 BANK_URL = "http://127.0.0.1:8001/mcp"
 RESULTS = Path(__file__).parents[1] / "results"
 PREFLIGHT_TIMEOUT_S = 1.0
+# After a failed turn the solution may still be running it. The harness waits
+# for the account to go quiet before reading the turn, and never sends the next.
+QUIET_S = 5.0
+SETTLE_CAP_S = 120.0
+
+
+class Settle(Frozen):
+    quiet_s: float = QUIET_S
+    cap_s: float = SETTLE_CAP_S
+
+
+DEFAULT_SETTLE = Settle()
 
 
 class PreflightFailed(Exception):
@@ -90,6 +102,7 @@ def run_round(
     tracing: Tracing,
     results: Path,
     repetitions: int = REPETITIONS,
+    settle: Settle = DEFAULT_SETTLE,
 ) -> tuple[Path, Report]:
     """Run every Attempt, write one JSONL line per Attempt, and the Report last."""
     results.mkdir(parents=True, exist_ok=True)
@@ -108,6 +121,7 @@ def run_round(
                     bank=bank,
                     solution=solution,
                     tracing=tracing,
+                    settle=settle,
                 )
                 verdict = judge(
                     conversation,
@@ -139,6 +153,7 @@ def run_attempt(
     bank: Bank,
     solution: Solution,
     tracing: Tracing,
+    settle: Settle = DEFAULT_SETTLE,
 ) -> Attempt:
     account = conversation.account
     started = time.perf_counter()
@@ -163,6 +178,9 @@ def run_attempt(
                     headers={**traced.headers, "X-Account-Id": account},
                 )
                 traced.answered(result)
+            settled = result.outcome == "ok" or bank.settle(
+                account, quiet_s=settle.quiet_s, cap_s=settle.cap_s
+            )
             activity = bank.since(account, marks)
             turns.append(
                 TurnRecord(
@@ -174,9 +192,12 @@ def run_attempt(
                         moved=activity.moved,
                         calls=activity.calls,
                         outcome=result.outcome,
+                        settled=settled,
                     ),
                 )
             )
+            if result.outcome != "ok":
+                break
     return Attempt(
         round_id=round_id,
         conversation_id=conversation.id,
@@ -216,7 +237,7 @@ def git_commit(repository: Path = Path(__file__).parent) -> str:
 def new_round(name: str, kind: Kind, dataset: Dataset) -> Round:
     now = datetime.now(UTC)
     return Round(
-        id=f"{now:%Y%m%dT%H%M%SZ}-{name}-{uuid.uuid4().hex[:6]}",
+        id=f"{now:%Y%m%dT%H%M%S%fZ}-{name}-{uuid.uuid4().hex[:6]}",
         name=name,
         kind=kind,
         commit=git_commit(),
@@ -227,6 +248,15 @@ def new_round(name: str, kind: Kind, dataset: Dataset) -> Round:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Exit 0 approved, 1 a gate failed, 2 preflight failed, 3 harness error."""
+    try:
+        return _main(argv)
+    except Exception as error:
+        print(f"harness error: {type(error).__name__}: {error}", file=sys.stderr)
+        return 3
+
+
+def _main(argv: Sequence[str] | None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True)
     parser.add_argument("--kind", choices=["dev", "holdout"], default="dev")
@@ -240,6 +270,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--results", type=Path, default=RESULTS)
     parser.add_argument("--timeout-s", type=float, default=120.0)
+    parser.add_argument("--quiet-s", type=float, default=QUIET_S)
+    parser.add_argument("--settle-cap-s", type=float, default=SETTLE_CAP_S)
     args = parser.parse_args(argv)
 
     dataset = load_dataset(args.dataset)
@@ -266,6 +298,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         solution=solution,
         tracing=tracing,
         results=args.results,
+        settle=Settle(quiet_s=args.quiet_s, cap_s=args.settle_cap_s),
     )
     sequence = streak(args.results) if round_.kind == "dev" else None
     print(render(round_, report, sequence))

@@ -30,6 +30,9 @@ class TurnFacts(Frozen):
     moved: tuple[Movement, ...]
     calls: tuple[ToolCall, ...]
     outcome: Outcome
+    # False when a failed turn kept moving until the settle cap: the harness
+    # cannot prove what that turn did.
+    settled: bool = True
 
 
 class TurnRecord(Frozen):
