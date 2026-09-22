@@ -30,6 +30,8 @@ from harness.report import (
     ReportLine,
     Round,
     Stamp,
+    render,
+    streak,
     summarize,
 )
 from harness.solution import SOLUTION_URL, Solution
@@ -118,7 +120,7 @@ def run_round(
                 line = AttemptLine(**stamp, attempt=attempt, verdict=verdict)
                 out.write(line.model_dump_json() + "\n")
                 out.flush()
-            report = summarize(dataset.conversations, judged)
+            report = summarize(dataset.conversations, judged, kind=round_.kind)
             out.write(
                 ReportLine(**stamp, round=round_, report=report).model_dump_json()
                 + "\n"
@@ -241,9 +243,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         trace_headers=lambda _: {},
         results=args.results,
     )
-    print(report.model_dump_json(indent=2))
-    print(f"results {path}")
-    return 0
+    sequence = streak(args.results) if round_.kind == "dev" else None
+    print(render(round_, report, sequence))
+    print(f"\nresults {path}")
+    return 0 if report.passed else 1
 
 
 if __name__ == "__main__":

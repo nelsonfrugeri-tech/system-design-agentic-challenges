@@ -60,5 +60,8 @@ eval:
 	@shasum -a 256 "$(dataset)"
 	uv run --locked python -m harness.run --name "$(name)" --kind "$(kind)" --dataset "$(dataset)" --solution-url "$(SOLUTION_URL)"
 
+e2e:
+	uv run --locked pytest -q -m e2e
+
 stub:
 	uv run --locked python -m baselines.stub --mode "$(mode)" --port "$(port)" --bank-url "$(BANK_URL)" --dataset "$(dataset)"

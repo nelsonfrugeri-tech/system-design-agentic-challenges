@@ -24,6 +24,8 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["e2e: whole rounds of the stubs against the real bank-mcp (make e2e)"]
+addopts = "-m 'not e2e'"
 
 [tool.ruff]
 target-version = "py312"
