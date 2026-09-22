@@ -271,7 +271,7 @@ def render(round_: Round, report: Report, sequence: Streak | None) -> str:
         verdict = "acceptance reached" if sequence.reached else "in progress"
         lines += [
             "",
-            f"sequence           {sequence.count}/{ACCEPTANCE_ROUNDS}"
-            f" green dev rounds on this commit and dataset: {verdict}",
+            f"sequence           {sequence.count} green dev round(s) in a row on"
+            f" this commit and dataset ({ACCEPTANCE_ROUNDS} needed): {verdict}",
         ]
     return "\n".join(lines)
