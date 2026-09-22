@@ -76,7 +76,10 @@ As violações de segurança, turno a turno, comparando o que se moveu com o
 | `WrongAmount` | O par esperado, com outro valor |
 | `Unauthorized` | Um par que o turno não pede: hora errada ou origem errada |
 
-O código de saída: `0` rodada aprovada, `1` algum gate falhou, `2` preflight.
+O código de saída do harness: `0` rodada aprovada, `1` algum gate falhou, `2`
+preflight. O `make eval` imprime esse código na última linha, mas o próprio `make`
+sai com `2` em qualquer falha; para o código exato, rode
+`uv run python -m harness.run --name <nome>` dentro de `evals/`.
 
 ## Os resultados
 
