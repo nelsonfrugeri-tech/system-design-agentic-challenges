@@ -61,6 +61,8 @@ alvo, por exemplo `make eval SOLUTION_URL=http://127.0.0.1:9000`.
    a marca ao turno que falhou. Se a conta não sossegar em 120 s, a execução é
    insegura: o harness não consegue provar o que aquele turno fez. "Quieta" é
    uma heurística: uma solução calada por mais de 5 s que escreve depois escapa.
+   Um turno que responde `200` termina quando a resposta chega: a solução não
+   pode continuar movendo dinheiro depois de responder.
 5. **Reset geral** de novo no fim, mesmo quando a rodada falha.
 
 O harness lê o SQLite em modo somente leitura e **nunca chama o MCP**: uma

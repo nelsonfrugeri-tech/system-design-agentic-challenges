@@ -16,7 +16,10 @@ import uuid
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 from urllib.parse import urlsplit
+
+from pydantic import PositiveFloat, model_validator
 
 from harness.bank import DATA_DIR, Bank
 from harness.checks import judge
@@ -48,8 +51,14 @@ SETTLE_CAP_S = 120.0
 
 
 class Settle(Frozen):
-    quiet_s: float = QUIET_S
-    cap_s: float = SETTLE_CAP_S
+    quiet_s: PositiveFloat = QUIET_S
+    cap_s: PositiveFloat = SETTLE_CAP_S
+
+    @model_validator(mode="after")
+    def cap_covers_quiet(self) -> Self:
+        if self.cap_s < self.quiet_s:
+            raise ValueError("the settle cap must be at least the quiet window")
+        return self
 
 
 DEFAULT_SETTLE = Settle()

@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from baselines.stub import call_bank
 from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, ReportLine
-from harness.run import main, new_round, run_round
+from harness.run import Settle, main, new_round, run_round
 from harness.solution import ChatResult, Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
@@ -291,3 +292,8 @@ def test_every_account_is_reset_after_the_round_even_when_it_fails(
 
     assert bank_server.bank.final_state("acc-1001") == fixture
     assert bank_server.bank.operations("acc-1001") == ()
+
+
+def test_a_settle_cap_below_the_quiet_window_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        Settle(quiet_s=5.0, cap_s=1.0)
