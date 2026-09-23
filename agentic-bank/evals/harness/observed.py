@@ -26,10 +26,33 @@ class ToolCall(Frozen):
         return self.tool not in READ_TOOLS
 
 
+class Marks(Frozen):
+    """The bank's high-water marks before a turn; rows above them are the turn's."""
+
+    calls_id: int
+    operations_rowid: int
+
+
+class ForeignMovement(Frozen):
+    """Money that moved in an account other than the conversation's."""
+
+    account: str
+    movement: Movement
+
+
+class ForeignCall(Frozen):
+    account: str
+    call: ToolCall
+
+
 class TurnFacts(Frozen):
     moved: tuple[Movement, ...]
     calls: tuple[ToolCall, ...]
     outcome: Outcome
+    # Rows above the marks in any other account: the solution touched another
+    # customer. Nothing in a conversation ever expects them.
+    foreign_moved: tuple[ForeignMovement, ...] = ()
+    foreign_calls: tuple[ForeignCall, ...] = ()
     # False when a failed turn kept moving until the settle cap: the harness
     # cannot prove what that turn did.
     settled: bool = True
@@ -50,6 +73,7 @@ class Attempt(Frozen):
     thread_id: str
     trace_id: str | None
     account: str
+    start_marks: Marks
     initial_operations: tuple[Movement, ...]
     turns: tuple[TurnRecord, ...]
     final_state: FinalState

@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
-from pydantic import computed_field
+from pydantic import ValidationError, computed_field
 
 from harness.checks import Verdict
 from harness.dataset import Conversation, Frozen
@@ -202,6 +202,8 @@ class Streak(Frozen):
     count: int
     commit: str | None
     dataset_sha256: str | None
+    # Result files with a line that is not a valid, stamped line.
+    rejected: tuple[str, ...] = ()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -218,16 +220,32 @@ def streak(results: Path) -> Streak:
     """
     stamps: dict[str, Stamp] = {}
     passed: dict[str, bool] = {}
+    rejected: list[str] = []
     for path in sorted(results.glob("*.jsonl")):
-        for raw in path.read_text().splitlines():
-            line = _SequenceLine.model_validate_json(raw)
+        try:
+            lines = [
+                _SequenceLine.model_validate_json(raw)
+                for raw in path.read_text().splitlines()
+            ]
+        except ValidationError:
+            # A truncated or unstamped file never counts and never blocks the
+            # rounds after it: its round, named by the file, is a red dev round.
+            rejected.append(path.name)
+            stamps[path.stem] = Stamp(
+                round_id=path.stem, commit="", dataset_sha256="", kind="dev"
+            )
+            passed[path.stem] = False
+            continue
+        for line in lines:
             stamps[line.round_id] = Stamp.of_line(line)
             passed.setdefault(line.round_id, False)
             if line.report is not None:
                 passed[line.round_id] = line.report.passed
     dev = [stamps[id] for id in sorted(stamps) if stamps[id].kind == "dev"]
     if not dev:
-        return Streak(count=0, commit=None, dataset_sha256=None)
+        return Streak(
+            count=0, commit=None, dataset_sha256=None, rejected=tuple(rejected)
+        )
     latest = dev[-1]
     count = 0
     for stamp in reversed(dev):
@@ -240,7 +258,10 @@ def streak(results: Path) -> Streak:
             break
         count += 1
     return Streak(
-        count=count, commit=latest.commit, dataset_sha256=latest.dataset_sha256
+        count=count,
+        commit=latest.commit,
+        dataset_sha256=latest.dataset_sha256,
+        rejected=tuple(rejected),
     )
 
 
@@ -273,5 +294,9 @@ def render(round_: Round, report: Report, sequence: Streak | None) -> str:
             "",
             f"sequence           {sequence.count} green dev round(s) in a row on"
             f" this commit and dataset ({ACCEPTANCE_ROUNDS} needed): {verdict}",
+            *(
+                f"  warning: {name} has an invalid line; its round counts as red"
+                for name in sequence.rejected
+            ),
         ]
     return "\n".join(lines)

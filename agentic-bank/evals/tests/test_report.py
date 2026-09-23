@@ -6,11 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from harness.checks import SafetyViolation, TurnOutcome, Verdict
 from harness.dataset import Conversation, FinalState, Movement, Turn
-from harness.observed import Attempt, TurnFacts, TurnRecord
+from harness.observed import Attempt, Marks, TurnFacts, TurnRecord
 from harness.report import (
     Judged,
     Kind,
@@ -61,6 +60,7 @@ def judged(
         thread_id="t",
         trace_id=None,
         account="a",
+        start_marks=Marks(calls_id=0, operations_rowid=0),
         initial_operations=(),
         turns=(
             TurnRecord(
@@ -251,8 +251,10 @@ def test_a_line_without_its_stamp_is_rejected(tmp_path: Path, field: str) -> Non
     del line[field]
     path.write_text(json.dumps(line) + "\n")
 
-    with pytest.raises(ValidationError):
-        streak(tmp_path)
+    sequence = streak(tmp_path)
+
+    assert sequence.count == 0
+    assert sequence.rejected == (path.name,)
 
 
 def test_a_round_that_never_wrote_its_report_breaks_the_sequence(

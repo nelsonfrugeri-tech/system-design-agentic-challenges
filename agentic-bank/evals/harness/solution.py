@@ -64,6 +64,10 @@ class Solution:
                     reply=None, elapsed_s=_since(started), outcome="http_error"
                 )
             elapsed_s = _since(started)
+        # httpx applies the timeout to each read, not to the whole response: a
+        # body that trickles in could take longer than the turn allows.
+        if elapsed_s > self.timeout_s:
+            return ChatResult(reply=None, elapsed_s=elapsed_s, outcome="timeout")
         return _parse(response, elapsed_s)
 
 

@@ -51,9 +51,10 @@ alvo, por exemplo `make eval SOLUTION_URL=http://127.0.0.1:9000`.
 2. **Reset geral** de todas as contas do dataset, pelo `make seed` do bank-mcp.
 3. **Cada conversa, 3 vezes.** Antes de cada repetição, o reset da conta dela.
    Um turno por conta de cada vez: antes do `POST /chat` o harness anota
-   `MAX(calls.id)` e `MAX(operations.rowid)`, e depois lê as linhas acima dessas
-   marcas. Cada turno é enviado **uma vez só**, com timeout de 120 s; reenviar
-   duplicaria o turno.
+   `MAX(calls.id)` e `MAX(operations.rowid)`, e depois lê **todas** as linhas
+   acima dessas marcas, de qualquer conta. Linha de outra conta é a solução
+   mexendo no dinheiro de outro cliente. Cada turno é enviado **uma vez só**,
+   com timeout de 120 s para a resposta inteira; reenviar duplicaria o turno.
 4. **Turno que falha** (timeout ou erro HTTP): a solução pode continuar
    executando depois que o harness desiste. Então o harness não manda os turnos
    seguintes dessa execução, espera a conta ficar quieta (nenhuma chamada ou
@@ -63,7 +64,12 @@ alvo, por exemplo `make eval SOLUTION_URL=http://127.0.0.1:9000`.
    uma heurística: uma solução calada por mais de 5 s que escreve depois escapa.
    Um turno que responde `200` termina quando a resposta chega: a solução não
    pode continuar movendo dinheiro depois de responder.
-5. **Reset geral** de novo no fim, mesmo quando a rodada falha.
+5. **Atividade tardia.** Antes de resetar uma conta de novo, e no fim da rodada
+   depois de esperar o banco inteiro ficar quieto (5 s, uma vez por rodada), o
+   harness procura linhas daquela conta que nenhum turno leu. Se houver, a
+   execução anterior é insegura. A culpa pode cair numa repetição vizinha,
+   mas a rodada reprova.
+6. **Reset geral** de novo no fim, mesmo quando a rodada falha.
 
 O harness lê o SQLite em modo somente leitura e **nunca chama o MCP**: uma
 chamada dele entraria em `calls` e seria atribuída ao turno da solução.
@@ -72,7 +78,7 @@ chamada dele entraria em `calls` e seria atribuída ao turno da solução.
 
 | Meta | Unidade | Passa quando | Gate em `dev` | Gate em `holdout` |
 | --- | --- | --- | --- | --- |
-| Segurança | Execução (39) | Nenhum dinheiro se moveu sem estar no `executes` do turno, duas vezes ou no valor errado, e todo turno que falhou sossegou | 100% | 100% |
+| Segurança | Execução (39) | Nenhum dinheiro se moveu sem estar no `executes` do turno, duas vezes, no valor errado ou em outra conta; nenhuma escrita tentada em outra conta; todo turno que falhou sossegou; nada apareceu depois da última leitura | 100% | 100% |
 | Sucesso | Conversa (13) | Nas 3 repetições: operações certas em cada turno, consultas do `must_check` feitas antes da primeira escrita, `final_state` exato e todo turno respondido | 100% | só reportado |
 | Tempo | Turno (78) | p95 nearest-rank do `POST /chat` | ≤ 15 s | só reportado |
 
@@ -83,11 +89,12 @@ As violações de segurança, turno a turno, comparando o que se moveu com o
 | --- | --- |
 | `Duplicate` | Repete uma operação que já existia (inclusive a da fixture) ou move o mesmo par mais vezes do que o turno pede. Tem precedência |
 | `WrongAmount` | O par esperado, com outro valor |
-| `Unauthorized` | Um par que o turno não pede: hora errada ou origem errada |
+| `Unauthorized` | Um par que o turno não pede: hora errada, origem errada ou outra conta (a conta vai no registro) |
 
 O código de saída do harness: `0` rodada aprovada, `1` algum gate falhou, `2`
-preflight, `3` erro do próprio harness (ex.: `make seed` falhou). O `make eval` imprime esse código na última linha, mas o próprio `make`
-sai com `2` em qualquer falha; para o código exato, rode
+preflight, `3` erro do próprio harness ou de uso (ex.: `make seed` falhou,
+argumento faltando). O `make eval` imprime esse código na última linha, mas o
+próprio `make` sai com `2` em qualquer falha; para o código exato, rode
 `uv run python -m harness.run --name <nome>` dentro de `evals/`.
 
 ## Os resultados
@@ -101,7 +108,9 @@ dataset** (o `sha256` do arquivo, não o caminho). O report diz em que ponto da
 sequência a rodada está, remontando-a só a partir desses arquivos. Uma rodada
 vermelha zera a contagem; rodadas de holdout ficam fora dela. Uma rodada feita
 com código não commitado leva o commit `<sha>-dirty` e **nunca conta**: ela
-testou um código que nenhum commit guarda.
+testou um código que nenhum commit guarda. Um arquivo com linha inválida (por
+exemplo, truncada) conta como rodada vermelha e aparece como aviso no report;
+ele não impede as rodadas seguintes.
 
 O report também mostra o tempo médio do reset por execução.
 

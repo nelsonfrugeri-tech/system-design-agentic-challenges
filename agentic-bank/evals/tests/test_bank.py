@@ -157,3 +157,43 @@ def test_settle_gives_up_on_an_account_that_keeps_moving(
     finally:
         stop.set()
         worker.join()
+
+
+def test_rows_of_another_account_above_the_marks_are_foreign(
+    bank_server: BankServer,
+) -> None:
+    bank = bank_server.bank
+    bank.reset(["acc-1001", "acc-1002"], DATASET)
+    marks = bank.marks()
+
+    asyncio.run(
+        call_bank(
+            bank_server.url,
+            "acc-1002",
+            "pay_card_bill",
+            {"bill_id": "bill-gold", "amount_cents": 100000},
+        )
+    )
+    turn = bank.since("acc-1001", marks)
+
+    assert turn.moved == () and turn.calls == ()
+    assert [(f.account, f.movement.amount_cents) for f in turn.foreign_moved] == [
+        ("acc-1002", 100000)
+    ]
+    assert [(f.account, f.call.tool) for f in turn.foreign_calls] == [
+        ("acc-1002", "pay_card_bill")
+    ]
+
+
+def test_unseen_counts_the_account_rows_the_harness_never_read(
+    bank_server: BankServer,
+) -> None:
+    bank = bank_server.bank
+    bank.reset(["acc-1003"], DATASET)
+    marks = bank.marks()
+    asyncio.run(call_bank(bank_server.url, "acc-1003", "get_balance", {}))
+    seen = bank.since("acc-1003", marks).row_ids
+
+    assert bank.unseen("acc-1003", marks, seen) == 0
+    asyncio.run(call_bank(bank_server.url, "acc-1003", "list_bills", {}))
+    assert bank.unseen("acc-1003", marks, seen) == 1

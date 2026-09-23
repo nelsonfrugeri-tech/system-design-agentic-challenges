@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from pydantic import PositiveFloat, model_validator
 
-from harness.bank import DATA_DIR, Bank
+from harness.bank import DATA_DIR, Bank, RowIds
 from harness.checks import judge
 from harness.dataset import DATASET, Conversation, Dataset, Frozen, load_dataset
 from harness.observed import Attempt, TurnFacts, TurnRecord
@@ -118,11 +118,29 @@ def run_round(
     path = results / f"{round_.id}.jsonl"
     stamp = Stamp.of(round_).model_dump()
     judged: list[Judged] = []
+    # An Attempt's line waits until its account is reset again, or the round
+    # ends: rows that appear after its last read make it unsafe.
+    pending: dict[str, Judged] = {}
+    read = RowIds()  # every row some turn of this round already read
     bank.reset_all(dataset.path)
     try:
         with path.open("w") as out:
+
+            def close(account: str, *, late: bool = False) -> None:
+                entry = pending.pop(account)
+                unseen = bank.unseen(account, entry.attempt.start_marks, read)
+                verdict = entry.verdict.model_copy(
+                    update={"late_activity": late or unseen > 0}
+                )
+                judged.append(Judged(attempt=entry.attempt, verdict=verdict))
+                line = AttemptLine(**stamp, attempt=entry.attempt, verdict=verdict)
+                out.write(line.model_dump_json() + "\n")
+                out.flush()
+
             for conversation, repetition in _schedule(dataset, repetitions):
-                attempt = run_attempt(
+                if conversation.account in pending:
+                    close(conversation.account)
+                attempt, seen = run_attempt(
                     round_.id,
                     conversation,
                     repetition,
@@ -138,10 +156,13 @@ def run_round(
                     turns=[t.facts for t in attempt.turns],
                     final_state=attempt.final_state,
                 )
-                judged.append(Judged(attempt=attempt, verdict=verdict))
-                line = AttemptLine(**stamp, attempt=attempt, verdict=verdict)
-                out.write(line.model_dump_json() + "\n")
-                out.flush()
+                read = read | seen
+                pending[attempt.account] = Judged(attempt=attempt, verdict=verdict)
+            # One wait per round, not per turn: a bank that never goes quiet
+            # leaves every open Attempt unsafe.
+            quiet = bank.settle_all(quiet_s=settle.quiet_s, cap_s=settle.cap_s)
+            for account in list(pending):
+                close(account, late=not quiet)
             report = summarize(dataset.conversations, judged, kind=round_.kind)
             out.write(
                 ReportLine(**stamp, round=round_, report=report).model_dump_json()
@@ -163,12 +184,15 @@ def run_attempt(
     solution: Solution,
     tracing: Tracing,
     settle: Settle = DEFAULT_SETTLE,
-) -> Attempt:
+) -> tuple[Attempt, RowIds]:
+    """Run one Attempt; also return the bank rows its turns already read."""
     account = conversation.account
     started = time.perf_counter()
     bank.reset([account], dataset.path)
     reset_s = time.perf_counter() - started
     initial_operations = bank.operations(account)
+    start_marks = bank.marks()
+    seen = RowIds()
     thread_id = str(uuid.uuid4())
     turns: list[TurnRecord] = []
     with tracing.attempt(
@@ -187,10 +211,12 @@ def run_attempt(
                     headers={**traced.headers, "X-Account-Id": account},
                 )
                 traced.answered(result)
-            settled = result.outcome == "ok" or bank.settle(
-                account, quiet_s=settle.quiet_s, cap_s=settle.cap_s
+            # Waits for the whole bank: the late write may land in any account.
+            settled = result.outcome == "ok" or bank.settle_all(
+                quiet_s=settle.quiet_s, cap_s=settle.cap_s
             )
             activity = bank.since(account, marks)
+            seen = seen | activity.row_ids
             turns.append(
                 TurnRecord(
                     index=index,
@@ -202,23 +228,27 @@ def run_attempt(
                         calls=activity.calls,
                         outcome=result.outcome,
                         settled=settled,
+                        foreign_moved=activity.foreign_moved,
+                        foreign_calls=activity.foreign_calls,
                     ),
                 )
             )
             if result.outcome != "ok":
                 break
-    return Attempt(
+    attempt = Attempt(
         round_id=round_id,
         conversation_id=conversation.id,
         repetition=repetition,
         thread_id=thread_id,
         trace_id=trace_id,
         account=account,
+        start_marks=start_marks,
         initial_operations=initial_operations,
         turns=tuple(turns),
         final_state=bank.final_state(account),
         reset_s=reset_s,
     )
+    return attempt, seen
 
 
 def _schedule(dataset: Dataset, repetitions: int) -> Iterator[tuple[Conversation, int]]:
@@ -260,6 +290,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Exit 0 approved, 1 a gate failed, 2 preflight failed, 3 harness error."""
     try:
         return _main(argv)
+    except SystemExit as exit_:
+        # argparse exits 2 on a usage error, which would read as "preflight".
+        return 0 if exit_.code in (0, None) else 3
     except Exception as error:
         print(f"harness error: {type(error).__name__}: {error}", file=sys.stderr)
         return 3

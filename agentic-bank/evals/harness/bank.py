@@ -14,20 +14,31 @@ from contextlib import closing
 from pathlib import Path
 
 from harness.dataset import FinalState, Frozen, Movement
-from harness.observed import ToolCall
+from harness.observed import ForeignCall, ForeignMovement, Marks, ToolCall
 
 BANK_MCP = Path(__file__).parents[2] / "bank-mcp"
 DATA_DIR = Path(__file__).parents[2] / ".data"
 
 
-class Marks(Frozen):
-    calls_id: int
-    operations_rowid: int
+class RowIds(Frozen):
+    """Which bank rows the harness has already attributed to a turn."""
+
+    calls: frozenset[int] = frozenset()
+    operations: frozenset[int] = frozenset()
+
+    def __or__(self, other: "RowIds") -> "RowIds":
+        return RowIds(
+            calls=self.calls | other.calls,
+            operations=self.operations | other.operations,
+        )
 
 
 class TurnActivity(Frozen):
     moved: tuple[Movement, ...]
     calls: tuple[ToolCall, ...]
+    foreign_moved: tuple[ForeignMovement, ...]
+    foreign_calls: tuple[ForeignCall, ...]
+    row_ids: RowIds
 
 
 class Bank:
@@ -60,6 +71,13 @@ class Bank:
         Quiet is a heuristic end of turn: a solution silent for longer than
         `quiet_s` that writes afterwards is not caught.
         """
+        return self._settle(account, quiet_s=quiet_s, cap_s=cap_s)
+
+    def settle_all(self, *, quiet_s: float, cap_s: float) -> bool:
+        """Like `settle`, for the whole bank: no new row in any account."""
+        return self._settle(None, quiet_s=quiet_s, cap_s=cap_s)
+
+    def _settle(self, account: str | None, *, quiet_s: float, cap_s: float) -> bool:
         deadline = time.monotonic() + cap_s
         last = self._activity(account)
         quiet_since = time.monotonic()
@@ -73,20 +91,54 @@ class Bank:
         return False
 
     def since(self, account: str, marks: Marks) -> TurnActivity:
-        """The account's operations and calls above the marks, in bank order."""
-        moved = self._all(
-            "SELECT action, target_id, amount_cents FROM operations"
-            " WHERE account_id = ? AND rowid > ? ORDER BY rowid",
-            (account, marks.operations_rowid),
+        """Every operation and call above the marks, in bank order.
+
+        With one turn at a time, every row above the marks is the turn's
+        (REQUIREMENTS.md: "leia as linhas acima dessas marcas"). Rows of any
+        other account come back apart, as foreign: the solution touched
+        another customer.
+        """
+        operations = self._all(
+            "SELECT rowid, account_id, action, target_id, amount_cents"
+            " FROM operations WHERE rowid > ? ORDER BY rowid",
+            (marks.operations_rowid,),
         )
         calls = self._all(
-            "SELECT id, tool, arguments, result FROM calls"
-            " WHERE account_id = ? AND id > ? ORDER BY id",
-            (account, marks.calls_id),
+            "SELECT id, account_id, tool, arguments, result FROM calls"
+            " WHERE id > ? ORDER BY id",
+            (marks.calls_id,),
         )
         return TurnActivity(
-            moved=tuple(_movement(row) for row in moved),
-            calls=tuple(_call(row) for row in calls),
+            moved=tuple(_movement(r[2:]) for r in operations if r[1] == account),
+            calls=tuple(_call((r[0], *r[2:])) for r in calls if r[1] == account),
+            foreign_moved=tuple(
+                ForeignMovement(account=str(r[1]), movement=_movement(r[2:]))
+                for r in operations
+                if r[1] != account
+            ),
+            foreign_calls=tuple(
+                ForeignCall(account=str(r[1]), call=_call((r[0], *r[2:])))
+                for r in calls
+                if r[1] != account
+            ),
+            row_ids=RowIds(
+                calls=frozenset(_int(r[0]) for r in calls),
+                operations=frozenset(_int(r[0]) for r in operations),
+            ),
+        )
+
+    def unseen(self, account: str, marks: Marks, seen: RowIds) -> int:
+        """The account's rows above the marks that no turn has read."""
+        calls = self._all(
+            "SELECT id FROM calls WHERE account_id = ? AND id > ?",
+            (account, marks.calls_id),
+        )
+        operations = self._all(
+            "SELECT rowid FROM operations WHERE account_id = ? AND rowid > ?",
+            (account, marks.operations_rowid),
+        )
+        return sum(_int(r[0]) not in seen.calls for r in calls) + sum(
+            _int(r[0]) not in seen.operations for r in operations
         )
 
     def operations(self, account: str) -> tuple[Movement, ...]:
@@ -114,7 +166,13 @@ class Bank:
             investment_balance_cents=_amounts(investments),
         )
 
-    def _activity(self, account: str) -> tuple[object, ...]:
+    def _activity(self, account: str | None) -> tuple[object, ...]:
+        if account is None:
+            return self._all(
+                "SELECT (SELECT COALESCE(MAX(id), 0) FROM calls),"
+                " (SELECT COALESCE(MAX(rowid), 0) FROM operations),"
+                " (SELECT COUNT(*) FROM calls), (SELECT COUNT(*) FROM operations)"
+            )[0]
         rows = self._all(
             "SELECT (SELECT COALESCE(MAX(id), 0) FROM calls WHERE account_id = ?),"
             " (SELECT COALESCE(MAX(rowid), 0) FROM operations WHERE account_id = ?)",
@@ -168,6 +226,12 @@ def _amounts(rows: list[tuple[object, ...]]) -> dict[str, int]:
             raise TypeError(f"unexpected row {(id, cents)!r}")
         amounts[id] = cents
     return amounts
+
+
+def _int(value: object) -> int:
+    if not isinstance(value, int):
+        raise TypeError(f"expected an integer, got {value!r}")
+    return value
 
 
 def _movement(row: tuple[object, ...]) -> Movement:
