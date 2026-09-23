@@ -2,10 +2,8 @@
 SQLite seeded by `make seed`, and the stub on a free port. Nothing is mocked."""
 
 import asyncio
-import socket
 import subprocess
 import sys
-import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,27 +13,14 @@ import pytest
 
 from baselines.stub import ping_bank
 from harness.bank import BANK_MCP, Bank
+from harness.calibration import free_port as calibration_free_port
+from harness.calibration import terminate_process, wait_until
 from harness.dataset import DATASET
-
-READY_S = 30.0
 
 
 def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
-def wait_until(ready: Callable[[], bool], process: subprocess.Popen[bytes]) -> None:
-    deadline = time.monotonic() + READY_S
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise RuntimeError(f"process exited with {process.returncode}")
-        if ready():
-            return
-        time.sleep(0.1)
-    raise TimeoutError("process not ready")
+    """Public test helper backed by the calibration port allocator."""
+    return calibration_free_port()
 
 
 @dataclass(frozen=True)
@@ -80,8 +65,7 @@ def bank_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[BankServer
         wait_until(lambda: _bank_answers(url), process)
         yield BankServer(bank=bank, url=url)
     finally:
-        process.terminate()
-        process.wait(timeout=10)
+        terminate_process(process)
 
 
 @dataclass(frozen=True)
@@ -135,5 +119,4 @@ def start_stub(bank_server: BankServer) -> Iterator[Callable[..., StubServer]]:
 
     yield start
     for process in processes:
-        process.terminate()
-        process.wait(timeout=10)
+        terminate_process(process)

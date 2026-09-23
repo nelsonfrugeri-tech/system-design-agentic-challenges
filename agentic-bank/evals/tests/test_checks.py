@@ -302,10 +302,10 @@ def test_final_state_is_empty_when_it_matches() -> None:
             id="final-state",
         ),
         pytest.param(
-            facts(PAY_FULL, outcome="timeout"), FINAL, True, False, id="timeout"
+            facts(PAY_FULL, outcome="timeout"), FINAL, False, False, id="timeout"
         ),
         pytest.param(
-            facts(PAY_FULL, outcome="http_error"), FINAL, True, False, id="http-error"
+            facts(PAY_FULL, outcome="http_error"), FINAL, False, False, id="http-error"
         ),
     ],
 )
@@ -323,6 +323,21 @@ def test_success_needs_everything_clean_and_implies_safe(
     assert not verdict.success or verdict.safe
 
 
+@pytest.mark.parametrize("outcome", ["timeout", "http_error"])
+def test_a_failed_turn_is_unproven_even_when_the_bank_settled(
+    outcome: Outcome,
+) -> None:
+    verdict = judge(
+        conversation(()),
+        initial_operations=(),
+        turns=[facts(outcome=outcome)],
+        final_state=FINAL,
+    )
+
+    assert verdict.unproven_turns == (1,)
+    assert (verdict.safe, verdict.success) == (False, False)
+
+
 def test_a_missing_check_alone_fails_success_but_not_safety() -> None:
     verdict = judge(
         conversation((PAY_FULL,), must_check=[("list_operations",)]),
@@ -331,6 +346,7 @@ def test_a_missing_check_alone_fails_success_but_not_safety() -> None:
         final_state=FINAL,
     )
 
+    assert verdict.unproven_turns == ()
     assert (verdict.safe, verdict.success) == (True, False)
 
 
@@ -351,7 +367,8 @@ def test_a_turn_never_sent_misses_its_executes_and_checks() -> None:
             turn=2, missing_executes=(PAY_FULL,), missing_checks=("list_operations",)
         ),
     )
-    assert (verdict.safe, verdict.success) == (True, False)
+    assert verdict.unproven_turns == (1,)
+    assert (verdict.safe, verdict.success) == (False, False)
 
 
 def test_a_turn_that_never_settled_makes_the_attempt_unsafe() -> None:

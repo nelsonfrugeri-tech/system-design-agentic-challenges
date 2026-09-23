@@ -13,9 +13,10 @@ import pytest
 from pydantic import ValidationError
 
 from baselines.stub import call_bank
+from harness.bank import Bank
 from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, ReportLine
-from harness.run import Settle, main, new_round, run_round
+from harness.run import PreflightFailed, Settle, main, new_round, preflight, run_round
 from harness.solution import ChatResult, Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
@@ -47,25 +48,31 @@ def run(
     *extra: str,
     bank_url: str | None = None,
 ) -> int:
+    dataset_option = (
+        ["--path", str(dataset)]
+        if "--type" in extra and extra[extra.index("--type") + 1] == "holdout"
+        else []
+    )
+    argv = [
+        "--name",
+        "test",
+        *dataset_option,
+        "--solution-url",
+        stub.url,
+        "--bank-url",
+        bank_url or bank_server.url,
+        "--bank-data-dir",
+        str(bank_server.bank.data_dir),
+        "--results",
+        str(results),
+        # The end-of-round quiet wait; tests that need another pass it later.
+        "--quiet-s",
+        "0.3",
+        *extra,
+    ]
     return main(
-        [
-            "--name",
-            "test",
-            "--dataset",
-            str(dataset),
-            "--solution-url",
-            stub.url,
-            "--bank-url",
-            bank_url or bank_server.url,
-            "--bank-data-dir",
-            str(bank_server.bank.data_dir),
-            "--results",
-            str(results),
-            # The end-of-round quiet wait; tests that need another pass it later.
-            "--quiet-s",
-            "0.3",
-            *extra,
-        ]
+        argv,
+        _dataset_override=None if dataset_option else dataset,
     )
 
 
@@ -78,7 +85,7 @@ def read_lines(path: Path) -> list[AttemptLine | ReportLine]:
     parsed: list[AttemptLine | ReportLine] = []
     for raw in path.read_text().splitlines():
         data = json.loads(raw)
-        model = AttemptLine if data["type"] == "attempt" else ReportLine
+        model = AttemptLine if data["record_type"] == "attempt" else ReportLine
         parsed.append(model.model_validate(data))
     return parsed
 
@@ -203,9 +210,13 @@ def test_a_corrupt_results_line_does_not_hide_the_round(
     assert "0-truncated.jsonl" in out.out + out.err
 
 
-@pytest.mark.parametrize(("argv", "code"), [([], 3), (["--help"], 0)])
+@pytest.mark.parametrize(("argv", "code"), [([], 2), (["--help"], 0)])
 def test_a_usage_error_is_not_a_preflight_failure(argv: list[str], code: int) -> None:
     assert main(argv) == code
+
+
+def test_default_rejects_dataset_override_from_the_cli() -> None:
+    assert main(["--name", "unsafe", "--dataset", str(DATASET)]) == 2
 
 
 class PaysAnotherAccount(Solution):
@@ -236,7 +247,7 @@ def test_money_moved_in_another_account_makes_the_attempt_unsafe(
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill"]))
 
     _, report = run_round(
-        new_round("foreign", "dev", dataset),
+        new_round("foreign", "default", dataset),
         dataset=dataset,
         bank=bank_server.bank,
         solution=PaysAnotherAccount(bank_server.url, victim="acc-1002"),
@@ -279,13 +290,87 @@ class PaysAfterAnswering(Solution):
         )
 
 
+class PaysInTheNextAttempt(Solution):
+    """Times out, stays quiet, then pays in the next Attempt's expected turn."""
+
+    def __init__(self, bank_url: str) -> None:
+        super().__init__("http://unused")
+        self.bank_url = bank_url
+        self.threads: list[str] = []
+        self.turns: Counter[str] = Counter()
+        self.release = threading.Event()
+        self.paid = threading.Event()
+        self.worker: threading.Thread | None = None
+        self.account: str | None = None
+
+    def chat(
+        self, *, thread_id: str, message: str, headers: Mapping[str, str]
+    ) -> ChatResult:
+        if thread_id not in self.threads:
+            self.threads.append(thread_id)
+        attempt = self.threads.index(thread_id)
+        turn = self.turns[thread_id]
+        self.turns[thread_id] += 1
+        if attempt == 0:
+            self.account = headers["X-Account-Id"]
+            self.worker = threading.Thread(target=self._late_pay, daemon=True)
+            self.worker.start()
+            return ChatResult(reply=None, elapsed_s=0.01, outcome="timeout")
+        if attempt == 1 and turn == 1:
+            self.release.set()
+            assert self.paid.wait(timeout=10)
+        elif attempt == 2 and turn == 1:
+            self._pay(headers["X-Account-Id"])
+        return ChatResult(reply="ok", elapsed_s=0.01, outcome="ok")
+
+    def _late_pay(self) -> None:
+        assert self.release.wait(timeout=10)
+        assert self.account is not None
+        self._pay(self.account)
+        self.paid.set()
+
+    def _pay(self, account: str) -> None:
+        asyncio.run(
+            call_bank(
+                self.bank_url,
+                account,
+                "pay_card_bill",
+                {"bill_id": "bill-gold", "amount_cents": 300000},
+            )
+        )
+
+
+def test_a_silent_write_after_timeout_never_makes_the_round_safe(
+    bank_server: BankServer, tmp_path: Path
+) -> None:
+    dataset = load_dataset(subset(tmp_path, ["clear-full-payment"]))
+    solution = PaysInTheNextAttempt(bank_server.url)
+
+    _, report = run_round(
+        new_round("silent-late", "default", dataset),
+        dataset=dataset,
+        bank=bank_server.bank,
+        solution=solution,
+        tracing=Tracing.disabled(),
+        results=tmp_path / "results",
+        settle=Settle(quiet_s=0.1, cap_s=1.0),
+    )
+
+    assert solution.worker is not None
+    solution.worker.join(timeout=10)
+    assert not solution.worker.is_alive()
+    attempts = [a for a in lines(tmp_path / "results") if isinstance(a, AttemptLine)]
+    assert attempts[0].verdict.unproven_turns == (1,)
+    assert str(report.safety) == "2/3"
+
+
 def test_money_that_moves_after_the_last_read_is_late_activity(
     bank_server: BankServer, tmp_path: Path
 ) -> None:
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill"]))
 
     _, report = run_round(
-        new_round("late", "dev", dataset),
+        new_round("late", "default", dataset),
         dataset=dataset,
         bank=bank_server.bank,
         solution=PaysAfterAnswering(bank_server.url),
@@ -339,6 +424,33 @@ def test_preflight_fails_fast_when_the_bank_is_down(
     assert stub.received() == []
 
 
+# S26
+def test_preflight_rejects_an_mcp_serving_a_different_database(
+    bank_server: BankServer,
+    start_stub: StartStub,
+    tmp_path: Path,
+) -> None:
+    dataset = load_dataset(DATASET)
+    observed = Bank(data_dir=tmp_path / "other-bank")
+    observed.data_dir.mkdir()
+    observed.reset_all(dataset.path)
+
+    with pytest.raises(PreflightFailed, match="different banks"):
+        preflight(
+            Solution(start_stub("refuse").url), observed, bank_server.url, dataset
+        )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["relative.json", str(DATASET), "/definitely/missing/holdout.json"],
+)
+def test_holdout_path_must_be_absolute_existing_and_outside_the_repository(
+    path: str,
+) -> None:
+    assert main(["--name", "invalid", "--type", "holdout", "--path", path]) == 2
+
+
 # S20
 def test_a_holdout_round_is_identified_by_its_sha256_and_gated_by_safety_only(
     bank_server: BankServer,
@@ -351,19 +463,20 @@ def test_a_holdout_round_is_identified_by_its_sha256_and_gated_by_safety_only(
     before = [bank_server.bank.final_state(f"acc-10{n:02d}") for n in range(1, 14)]
     stub = start_stub("refuse", dataset=dataset)
 
-    code = run(bank_server, stub, dataset, tmp_path / "results", "--kind", "holdout")
+    code = run(bank_server, stub, dataset, tmp_path / "results", "--type", "holdout")
 
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    out = captured.out
     parsed = lines(tmp_path / "results")
     report = parsed[-1]
     assert isinstance(report, ReportLine)
     assert out.index(f"sha256  {sha}") < out.index("\nround   ")
     assert {line.dataset_sha256 for line in parsed} == {sha}
     assert report.round.dataset_sha256 == sha
-    assert {line.kind for line in parsed} == {"holdout"}
+    assert {line.type for line in parsed} == {"holdout"}
     assert [g.name for g in report.report.gates] == ["safety"]
     assert report.report.success.passed < report.report.success.total
-    assert code == 0
     assert {a.attempt.account for a in parsed if isinstance(a, AttemptLine)} == {
         "acc-9001",
         "acc-9003",
@@ -398,7 +511,7 @@ def test_every_account_is_reset_after_the_round_even_when_it_fails(
 ) -> None:
     dataset = load_dataset(subset(tmp_path, ["clear-full-payment"]))
     fixture = bank_server.bank.final_state("acc-1001")
-    round_ = new_round("crash", "dev", dataset)
+    round_ = new_round("crash", "default", dataset)
 
     with pytest.raises(RuntimeError, match="mid-turn"):
         run_round(

@@ -7,6 +7,7 @@ even when the round fails.
 """
 
 import argparse
+import asyncio
 import os
 import socket
 import subprocess
@@ -14,21 +15,25 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
 
+import httpx
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 from pydantic import PositiveFloat, model_validator
 
 from harness.bank import DATA_DIR, Bank, RowIds
+from harness.calibration import UnknownDataset, run_calibration
 from harness.checks import judge
 from harness.dataset import DATASET, Conversation, Dataset, Frozen, load_dataset
 from harness.observed import Attempt, TurnFacts, TurnRecord
 from harness.report import (
     AttemptLine,
+    EvalType,
     Judged,
-    Kind,
     Report,
     ReportLine,
     Round,
@@ -70,8 +75,12 @@ class PreflightFailed(Exception):
         self.missing = tuple(missing)
 
 
-def preflight(solution: Solution, bank: Bank, bank_url: str) -> None:
-    """Fail in about a second when the solution or the bank is down."""
+class UsageFailed(ValueError):
+    """The requested round type and dataset path are inconsistent."""
+
+
+def preflight(solution: Solution, bank: Bank, bank_url: str, dataset: Dataset) -> None:
+    """Fail fast unless the solution and the observed MCP bank both answer."""
     missing: list[str] = []
     if not solution.health():
         missing.append(
@@ -87,6 +96,39 @@ def preflight(solution: Solution, bank: Bank, bank_url: str) -> None:
         )
     if missing:
         raise PreflightFailed(missing)
+    # The identity probe uses the first account from this exact dataset. Seed
+    # it before the MCP call; run_round resets it again immediately afterwards.
+    bank.reset_all(dataset.path)
+    account = dataset.conversations[0].account
+    marks = bank.marks()
+    try:
+        asyncio.run(_call_balance(bank_url, account))
+    except Exception as error:
+        raise PreflightFailed((f"bank: MCP get_balance failed: {error}",)) from error
+    calls = bank.since(account, marks).calls
+    if not any(call.tool == "get_balance" for call in calls):
+        raise PreflightFailed(
+            (
+                "bank: MCP answered but did not write to the observed bank.db;"
+                " BANK_URL and BANK_DATA_DIR identify different banks",
+            )
+        )
+
+
+async def _call_balance(bank_url: str, account: str) -> None:
+    async with (
+        httpx.AsyncClient(
+            headers={"X-Account-Id": account}, timeout=PREFLIGHT_TIMEOUT_S
+        ) as http,
+        streamable_http_client(bank_url, http_client=http) as (read, write, _),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        await session.call_tool(
+            "get_balance",
+            {},
+            read_timeout_seconds=timedelta(seconds=PREFLIGHT_TIMEOUT_S),
+        )
 
 
 def _listening(url: str) -> bool:
@@ -163,7 +205,7 @@ def run_round(
             quiet = bank.settle_all(quiet_s=settle.quiet_s, cap_s=settle.cap_s)
             for account in list(pending):
                 close(account, late=not quiet)
-            report = summarize(dataset.conversations, judged, kind=round_.kind)
+            report = summarize(dataset.conversations, judged, type=round_.type)
             out.write(
                 ReportLine(**stamp, round=round_, report=report).model_dump_json()
                 + "\n"
@@ -273,36 +315,48 @@ def git_commit(repository: Path = Path(__file__).parent) -> str:
     return f"{head}-dirty" if git("status", "--porcelain") else head
 
 
-def new_round(name: str, kind: Kind, dataset: Dataset) -> Round:
+def new_round(
+    name: str, type: EvalType, dataset: Dataset, solution_url: str = SOLUTION_URL
+) -> Round:
     now = datetime.now(UTC)
     return Round(
         id=f"{now:%Y%m%dT%H%M%S%fZ}-{name}-{uuid.uuid4().hex[:6]}",
         name=name,
-        kind=kind,
+        type=type,
         commit=git_commit(),
         dataset_sha256=dataset.sha256,
         dataset_path=str(dataset.path),
+        solution_url=solution_url.rstrip("/"),
         started_at=now.isoformat(),
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Exit 0 approved, 1 a gate failed, 2 preflight failed, 3 harness error."""
+def main(
+    argv: Sequence[str] | None = None, *, _dataset_override: Path | None = None
+) -> int:
+    """Exit 0 approved, 1 gate failed, 2 usage/preflight, 3 harness error."""
     try:
-        return _main(argv)
+        return _main(argv, _dataset_override=_dataset_override)
     except SystemExit as exit_:
-        # argparse exits 2 on a usage error, which would read as "preflight".
-        return 0 if exit_.code in (0, None) else 3
+        return 0 if exit_.code in (0, None) else 2
+    except UsageFailed as error:
+        print(f"usage: {error}", file=sys.stderr)
+        return 2
+    except UnknownDataset as error:
+        print(f"preflight: {error}", file=sys.stderr)
+        return 2
     except Exception as error:
         print(f"harness error: {type(error).__name__}: {error}", file=sys.stderr)
         return 3
 
 
-def _main(argv: Sequence[str] | None) -> int:
+def _main(argv: Sequence[str] | None, *, _dataset_override: Path | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--kind", choices=["dev", "holdout"], default="dev")
-    parser.add_argument("--dataset", type=Path, default=DATASET)
+    parser.add_argument(
+        "--type", choices=["default", "holdout", "stub"], default="default"
+    )
+    parser.add_argument("--path", type=Path)
     parser.add_argument("--solution-url", default=SOLUTION_URL)
     parser.add_argument("--bank-url", default=os.environ.get("BANK_URL", BANK_URL))
     parser.add_argument(
@@ -316,12 +370,15 @@ def _main(argv: Sequence[str] | None) -> int:
     parser.add_argument("--settle-cap-s", type=float, default=SETTLE_CAP_S)
     args = parser.parse_args(argv)
 
-    dataset = load_dataset(args.dataset)
+    dataset_path = _dataset_override or _dataset_path(args.type, args.path)
+    dataset = load_dataset(dataset_path)
     print(f"dataset {dataset.path}\nsha256  {dataset.sha256}", flush=True)
+    if args.type == "stub":
+        return _calibrate(args, dataset)
     bank = Bank(data_dir=args.bank_data_dir)
     solution = Solution(args.solution_url, timeout_s=args.timeout_s)
     try:
-        preflight(solution, bank, args.bank_url)
+        preflight(solution, bank, args.bank_url, dataset)
     except PreflightFailed as failed:
         for line in failed.missing:
             print(f"preflight: {line}", file=sys.stderr)
@@ -332,7 +389,7 @@ def _main(argv: Sequence[str] | None) -> int:
             f"preflight: warning: {warning}; the round runs without traces",
             file=sys.stderr,
         )
-    round_ = new_round(args.name, args.kind, dataset)
+    round_ = new_round(args.name, args.type, dataset, solution.url)
     path, report = run_round(
         round_,
         dataset=dataset,
@@ -342,10 +399,67 @@ def _main(argv: Sequence[str] | None) -> int:
         results=args.results,
         settle=Settle(quiet_s=args.quiet_s, cap_s=args.settle_cap_s),
     )
-    sequence = streak(args.results) if round_.kind == "dev" else None
+    sequence = streak(args.results) if round_.type == "default" else None
     print(render(round_, report, sequence))
     print(f"\nresults {path}")
     return 0 if report.passed else 1
+
+
+def _dataset_path(eval_type: EvalType, path: Path | None) -> Path:
+    if eval_type == "holdout":
+        if path is None:
+            raise UsageFailed("type=holdout requires path=/absolute/dataset.json")
+        if not path.is_absolute():
+            raise UsageFailed("holdout path must be absolute")
+        resolved = path.resolve()
+        repository = Path(__file__).parents[3].resolve()
+        if not resolved.is_file():
+            raise UsageFailed(f"holdout path is not a file: {resolved}")
+        if resolved == repository or repository in resolved.parents:
+            raise UsageFailed("holdout path must be outside the repository")
+        return resolved
+    if path is not None:
+        raise UsageFailed("--path is valid only with type=holdout")
+    return DATASET
+
+
+def _calibrate(args: argparse.Namespace, dataset: Dataset) -> int:
+    settle = Settle(quiet_s=args.quiet_s, cap_s=args.settle_cap_s)
+
+    def run_mode(
+        mode: str,
+        solution_url: str,
+        bank_url: str,
+        bank_data_dir: Path,
+        results: Path,
+    ) -> tuple[Path, Report]:
+        bank = Bank(data_dir=bank_data_dir)
+        solution = Solution(solution_url, timeout_s=args.timeout_s)
+        preflight(solution, bank, bank_url, dataset)
+        tracing, _ = from_environment()
+        round_ = new_round(f"{args.name}-{mode}", "stub", dataset, solution.url)
+        return run_round(
+            round_,
+            dataset=dataset,
+            bank=bank,
+            solution=solution,
+            tracing=tracing,
+            results=results,
+            settle=settle,
+        )
+
+    summary = run_calibration(
+        dataset, name=args.name, results=args.results, run_mode=run_mode
+    )
+    for mode, report in summary.reports.items():
+        print(f"{mode:7} safety={report.safety} success={report.success}")
+    for mismatch in summary.mismatches:
+        print(
+            f"calibration mismatch {mismatch.mode}.{mismatch.field}:"
+            f" expected {mismatch.expected}, got {mismatch.actual}",
+            file=sys.stderr,
+        )
+    return 0 if summary.passed else 1
 
 
 if __name__ == "__main__":

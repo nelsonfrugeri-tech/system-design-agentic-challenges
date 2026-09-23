@@ -203,6 +203,12 @@ def main() -> None:
         bank_url=args.bank_url,
         delay_s=args.delay_s,
     )
+    print(
+        f"stub mode={args.mode} url=http://127.0.0.1:{args.port}"
+        f" bank={args.bank_url}"
+        " use=POST /chat with X-Account-Id",
+        flush=True,
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 

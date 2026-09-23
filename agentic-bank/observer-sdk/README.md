@@ -58,6 +58,28 @@ with propagate_attributes(session_id=run_id, environment="evals", as_baggage=Tru
 Without `as_baggage=True`, the session and environment stay in the caller's
 process and never reach the solution.
 
+## Interaction with the eval harness
+
+The R4 harness records the normalized `solution_url` with every JSONL line and
+uses it, together with the Git commit and dataset SHA-256, to identify an
+acceptance streak. The URL identifies the evaluated service; tracing does not.
+
+Every eval turn has a 120-second HTTP timeout. A timeout or HTTP error fails both
+safety and success because the harness cannot prove that the turn completed
+safely. The harness may keep observing the bank until it is quiet for 5 seconds,
+capped at 120 seconds, but that interval is for diagnostics and cleanup only.
+Langfuse spans that arrive later remain useful for diagnosis and never change the
+verdict.
+
+The evaluator performs a same-bank identity probe before the round and resets the
+bank immediately afterward. This probe does not create a solution trace. During
+the scored round, `traceparent` and `baggage` are injected only into the
+solution requests described above.
+
+Private `type=stub` calibration starts and stops its own bank and fake-assistant
+processes. Those traces, if Langfuse is configured, are diagnostic calibration
+data and never contribute to the participant's three-round acceptance streak.
+
 ## Develop
 
 ```sh

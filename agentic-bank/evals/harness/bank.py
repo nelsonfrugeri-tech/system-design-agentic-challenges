@@ -1,8 +1,9 @@
 """The bank as the harness sees it: a read-only SQLite file plus `make seed`.
 
-The harness never calls the MCP: every call lands in `calls` and would be
-attributed to the solution's turn. Turn attribution by marks is valid only with
-one turn per account at a time (REQUIREMENTS.md, "Estado do banco").
+The preflight identity probe calls the MCP once, then the round reset removes
+that evidence. During a round only the solution calls the MCP. Turn attribution
+by marks is valid only with one turn per account at a time
+(REQUIREMENTS.md, "Bank state").
 """
 
 import json
@@ -144,7 +145,7 @@ class Bank:
     def operations(self, account: str) -> tuple[Movement, ...]:
         rows = self._all(
             "SELECT action, target_id, amount_cents FROM operations"
-            " WHERE account_id = ? ORDER BY rowid",
+            " WHERE account_id = ? AND status != 'failed' ORDER BY rowid",
             (account,),
         )
         return tuple(_movement(row) for row in rows)
