@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-PROJECTS := agentic-bank/bank-mcp agentic-bank/observer-sdk
+PROJECTS := agentic-bank/bank-mcp agentic-bank/observer-sdk agentic-bank/evals
 
 .PHONY: help langfuse check
 
