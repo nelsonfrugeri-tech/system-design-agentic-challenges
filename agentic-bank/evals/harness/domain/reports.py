@@ -1,10 +1,12 @@
 """The Round, its Report and gates, and the public JSONL record types (R4)."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import computed_field
 
 from harness.domain import Frozen
+from harness.domain.expected import Dataset
 from harness.domain.observations import Attempt
 from harness.domain.verdicts import Verdict
 
@@ -24,6 +26,31 @@ class Round(Frozen):
     dataset_sha256: str
     dataset_path: str
     started_at: str
+
+    @classmethod
+    def start(
+        cls,
+        name: str,
+        type: EvalType,
+        dataset: Dataset,
+        solution_url: str,
+        *,
+        commit: str,
+        now: datetime,
+        nonce: str,
+    ) -> "Round":
+        """A new Round. Its id starts with the UTC start time, so ids sort in run
+        order; the clock and the nonce come from the caller."""
+        return cls(
+            id=f"{now:%Y%m%dT%H%M%S%fZ}-{name}-{nonce}",
+            name=name,
+            type=type,
+            commit=commit,
+            dataset_sha256=dataset.sha256,
+            dataset_path=str(dataset.path),
+            solution_url=solution_url.rstrip("/"),
+            started_at=now.isoformat(),
+        )
 
 
 class Ratio(Frozen):

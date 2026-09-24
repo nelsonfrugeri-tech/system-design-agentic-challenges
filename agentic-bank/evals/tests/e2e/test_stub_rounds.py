@@ -12,11 +12,11 @@ from harness.adapters.dataset_file import DATASET, load_dataset
 from harness.adapters.langfuse import LangfuseTracing
 from harness.adapters.solution_http import HttpSolution
 from harness.domain.reports import AttemptLine, Report, ReportLine
-from harness.run import main, new_round
+from harness.run import main
 from tests.conftest import BankServer, StubServer
 from tests.support.results import read_lines, subset
 from tests.support.results import streak_of as streak
-from tests.support.rounds import run_round_into
+from tests.support.rounds import new_round, run_round_into
 
 pytestmark = pytest.mark.e2e
 

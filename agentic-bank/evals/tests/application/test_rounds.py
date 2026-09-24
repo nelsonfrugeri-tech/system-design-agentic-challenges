@@ -20,10 +20,10 @@ from harness.application.attempt import Settle
 from harness.application.preflight import PreflightFailed, preflight
 from harness.domain.observations import ChatResult
 from harness.domain.reports import AttemptLine, ReportLine
-from harness.run import main, new_round
+from harness.run import main
 from tests.conftest import BankServer, StubServer, free_port
 from tests.support.results import lines, subset
-from tests.support.rounds import run_round_into
+from tests.support.rounds import new_round, run_round_into
 from tests.support.solutions import FakeSolution
 
 type StartStub = Callable[..., StubServer]

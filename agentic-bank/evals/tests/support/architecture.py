@@ -51,9 +51,10 @@ def layer_of(module: str) -> str | None:
     parts = module.split(".")
     if parts[0] == "baselines":
         return "baselines"
-    if parts[0] != "harness" or len(parts) < 2:
+    if parts[0] != "harness":
         return None
-    if parts[1] == "run":
+    # The package root holds nothing; it belongs to the composition root.
+    if len(parts) == 1 or parts[1] == "run":
         return "composition"
     if parts[1] in {"domain", "application", "adapters", "presentation"}:
         return parts[1]

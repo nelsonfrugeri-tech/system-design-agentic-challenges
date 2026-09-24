@@ -76,8 +76,6 @@ def run_attempt(
         tracing=tracing,
         settle=settle,
     )
-    seen = RowIds()
-    turns: list[TurnRecord] = []
     with tracing.attempt(
         round_id=round_id,
         conversation_id=conversation.id,
@@ -85,12 +83,7 @@ def run_attempt(
         account=account,
         thread_id=thread_id,
     ) as trace_id:
-        for index, turn in enumerate(conversation.turns, start=1):
-            record, read = _run_turn(context, index, turn)
-            seen = seen | read
-            turns.append(record)
-            if record.facts.outcome != "ok":
-                break
+        turns, seen = _run_turns(context, conversation)
     attempt = Attempt(
         round_id=round_id,
         conversation_id=conversation.id,
@@ -105,6 +98,21 @@ def run_attempt(
         reset_s=reset_s,
     )
     return attempt, seen
+
+
+def _run_turns(
+    context: _Context, conversation: Conversation
+) -> tuple[list[TurnRecord], RowIds]:
+    """Every turn in order; a failed turn ends the Attempt."""
+    seen = RowIds()
+    turns: list[TurnRecord] = []
+    for index, turn in enumerate(conversation.turns, start=1):
+        record, read = _run_turn(context, index, turn)
+        seen = seen | read
+        turns.append(record)
+        if record.facts.outcome != "ok":
+            break
+    return turns, seen
 
 
 def _run_turn(context: _Context, index: int, turn: Turn) -> tuple[TurnRecord, RowIds]:

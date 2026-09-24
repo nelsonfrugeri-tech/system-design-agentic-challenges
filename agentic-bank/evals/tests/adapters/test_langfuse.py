@@ -19,10 +19,9 @@ from harness.adapters.dataset_file import load_dataset
 from harness.adapters.langfuse import LangfuseTracing, from_environment
 from harness.adapters.solution_http import HttpSolution
 from harness.domain.reports import AttemptLine
-from harness.run import new_round
 from tests.conftest import BankServer, StubServer, free_port
 from tests.support.results import lines, subset
-from tests.support.rounds import run_round_into
+from tests.support.rounds import new_round, run_round_into
 
 type StartStub = Callable[..., StubServer]
 

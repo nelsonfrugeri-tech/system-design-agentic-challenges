@@ -176,12 +176,14 @@ def test_settle_gives_up_on_an_account_that_keeps_moving(
     def busy() -> None:
         while not stop.is_set():
             asyncio.run(call_bank(bank_server.url, "acc-1003", "get_balance", {}))
-            time.sleep(0.1)
+            time.sleep(0.05)
 
     worker = threading.Thread(target=busy)
     worker.start()
     try:
-        assert not bank.settle("acc-1003", quiet_s=0.5, cap_s=1.5)
+        # The window must exceed the worker's cadence (one MCP session per call
+        # plus the sleep) with margin, or a slow call under load reads as quiet.
+        assert not bank.settle("acc-1003", quiet_s=1.0, cap_s=2.5)
     finally:
         stop.set()
         worker.join()

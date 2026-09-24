@@ -1,8 +1,6 @@
 """S1-S4, S13: structural gates. Each rule first proves it rejects a synthetic
 violation, then holds on the real tree."""
 
-import pytest
-
 from tests.support.architecture import (
     cross_test_imports,
     import_violations,
@@ -35,17 +33,6 @@ def test_a_framework_import_in_the_domain_is_rejected() -> None:
     assert not import_violations("harness.domain.judging", "import pydantic\n")
 
 
-def test_the_domain_depends_only_on_itself_and_pydantic() -> None:
-    domain = {n: s for n, s in PRODUCT.items() if n.startswith("harness.domain")}
-    violations = [
-        v for name, source in domain.items() for v in import_violations(name, source)
-    ]
-
-    assert domain
-    assert violations == []
-
-
-@pytest.mark.xfail(strict=True, reason="until slice 8: every module in a layer")
 def test_every_module_imports_only_what_its_layer_allows() -> None:
     violations = [
         v for name, source in PRODUCT.items() for v in import_violations(name, source)
@@ -60,7 +47,6 @@ def test_a_function_of_51_lines_is_rejected() -> None:
     assert not long_functions("m", lines(50))
 
 
-@pytest.mark.xfail(strict=True, reason="until slices 4-8: 6 functions > 50 lines")
 def test_no_function_is_longer_than_50_lines() -> None:
     violations = [
         v for name, source in PRODUCT.items() for v in long_functions(name, source)
