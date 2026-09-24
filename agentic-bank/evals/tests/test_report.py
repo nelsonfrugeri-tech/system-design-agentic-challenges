@@ -11,8 +11,8 @@ from harness.checks import SafetyViolation, TurnOutcome, Verdict
 from harness.dataset import Conversation, FinalState, Movement, Turn
 from harness.observed import Attempt, Marks, TurnFacts, TurnRecord
 from harness.report import (
+    EvalType,
     Judged,
-    Kind,
     Ratio,
     ReportLine,
     Round,
@@ -86,7 +86,7 @@ def test_a_conversation_passing_2_of_3_attempts_fails() -> None:
     attempts = [judged("a"), judged("a"), judged("a", success=False)]
     attempts += [judged("b"), judged("b"), judged("b")]
 
-    report = summarize(conversations, attempts, kind="dev")
+    report = summarize(conversations, attempts, type="default")
 
     assert report.success == Ratio(passed=1, total=2)
     assert report.inaction_correct == Ratio(passed=0, total=1)
@@ -97,7 +97,7 @@ def test_safety_counts_attempts_not_conversations() -> None:
     conversations = [conversation("a", moves=True)]
     attempts = [judged("a", safe=False), judged("a"), judged("a")]
 
-    report = summarize(conversations, attempts, kind="dev")
+    report = summarize(conversations, attempts, type="default")
 
     assert report.safety == Ratio(passed=2, total=3)
     assert report.success == Ratio(passed=0, total=1)
@@ -110,7 +110,7 @@ def test_clusters_are_broken_down() -> None:
     ]
     attempts = [judged("a")] * 3 + [judged("b", success=False)] + [judged("b")] * 2
 
-    report = summarize(conversations, attempts, kind="dev")
+    report = summarize(conversations, attempts, type="default")
 
     assert report.clusters == {
         "x": Ratio(passed=1, total=1),
@@ -133,26 +133,26 @@ def test_the_p95_gate_turns_exactly_at_15_s(slow_s: float, passed: bool) -> None
     conversations = [conversation("a", moves=False)]
     attempts = [judged("a", elapsed_s=slow_s)] * 3
 
-    report = summarize(conversations, attempts, kind="dev")
+    report = summarize(conversations, attempts, type="default")
 
     assert report.gate("p95").passed is passed
     assert report.passed is passed
 
 
-def test_dev_uses_three_gates_and_holdout_only_safety() -> None:
+def test_default_uses_three_gates_and_holdout_only_safety() -> None:
     conversations = [conversation("a", moves=False)]
     attempts = [judged("a", success=False, elapsed_s=60.0)] * 3
 
-    dev = summarize(conversations, attempts, kind="dev")
-    holdout = summarize(conversations, attempts, kind="holdout")
+    default = summarize(conversations, attempts, type="default")
+    holdout = summarize(conversations, attempts, type="holdout")
 
-    assert [(g.name, g.passed) for g in dev.gates] == [
+    assert [(g.name, g.passed) for g in default.gates] == [
         ("safety", True),
         ("success", False),
         ("p95", False),
     ]
     assert [(g.name, g.passed) for g in holdout.gates] == [("safety", True)]
-    assert holdout.passed and not dev.passed
+    assert holdout.passed and not default.passed
     assert holdout.success == Ratio(passed=0, total=1)
 
 
@@ -164,14 +164,16 @@ def write_round(
     passed: bool,
     commit: str = "c1",
     sha: str = "s1",
-    kind: Kind = "dev",
+    type: EvalType = "default",
+    solution_url: str = "http://127.0.0.1:8001",
 ) -> None:
     conversations = [conversation("a", moves=False)]
     attempts = [judged("a", success=passed)] * 3
     round_ = Round(
         id=f"20260922T00000{index}Z-r{index}",
         name="oracle",
-        kind=kind,
+        type=type,
+        solution_url=solution_url,
         commit=commit,
         dataset_sha256=sha,
         dataset_path="d.json",
@@ -180,7 +182,7 @@ def write_round(
     line = ReportLine(
         **Stamp.of(round_).model_dump(),
         round=round_,
-        report=summarize(conversations, attempts, kind=kind),
+        report=summarize(conversations, attempts, type=type),
     )
     (results / f"{round_.id}.jsonl").write_text(line.model_dump_json() + "\n")
 
@@ -223,11 +225,29 @@ def rounds(results: Path, specs: Sequence[dict[str, object]]) -> int:
             [
                 {"passed": True},
                 {"passed": True},
-                {"passed": True, "kind": "holdout"},
+                {"passed": True, "type": "holdout"},
                 {"passed": True},
             ],
             3,
             id="holdout-is-not-in-the-sequence",
+        ),
+        pytest.param(
+            [
+                {"passed": True},
+                {"passed": True, "type": "stub"},
+                {"passed": True},
+            ],
+            2,
+            id="stub-is-not-in-the-sequence",
+        ),
+        pytest.param(
+            [
+                {"passed": True},
+                {"passed": True, "solution_url": "http://127.0.0.1:8002"},
+                {"passed": True, "solution_url": "http://127.0.0.1:8002"},
+            ],
+            2,
+            id="other-solution-resets",
         ),
         pytest.param(
             [{"passed": True, "commit": "c1-dirty"}] * 3,
@@ -243,7 +263,9 @@ def test_the_acceptance_sequence(
     assert streak(tmp_path).reached is (count >= 3)
 
 
-@pytest.mark.parametrize("field", ["round_id", "commit", "dataset_sha256"])
+@pytest.mark.parametrize(
+    "field", ["round_id", "commit", "dataset_sha256", "solution_url"]
+)
 def test_a_line_without_its_stamp_is_rejected(tmp_path: Path, field: str) -> None:
     write_round(tmp_path, 0, passed=True)
     (path,) = tmp_path.glob("*.jsonl")
@@ -266,11 +288,12 @@ def test_a_round_that_never_wrote_its_report_breaks_the_sequence(
     aborted.write_text(
         json.dumps(
             {
-                "type": "attempt",
+                "record_type": "attempt",
                 "round_id": "20260922T000009Z-aborted",
                 "commit": "c1",
                 "dataset_sha256": "s1",
-                "kind": "dev",
+                "type": "default",
+                "solution_url": "http://127.0.0.1:8001",
                 "attempt": judged("a").attempt.model_dump(),
                 "verdict": judged("a").verdict.model_dump(),
             }
@@ -292,7 +315,7 @@ def test_p95_nearest_rank_when_095n_is_an_integer(count: int, expected: float) -
     assert p95([float(i) for i in range(1, count + 1)]) == expected
 
 
-def test_the_sequence_reads_only_the_stamps_of_older_attempt_lines(
+def test_legacy_lines_are_ignored_without_rejecting_or_breaking_the_sequence(
     tmp_path: Path,
 ) -> None:
     for index in range(3):
@@ -301,14 +324,76 @@ def test_the_sequence_reads_only_the_stamps_of_older_attempt_lines(
     older = judged("a").attempt.model_dump()
     del older["trace_id"]  # written before the field existed
     stamp = json.loads(path.read_text())
-    attempt = {k: stamp[k] for k in ("round_id", "commit", "dataset_sha256", "kind")}
+    attempt = {
+        k: stamp[k] for k in ("round_id", "commit", "dataset_sha256", "solution_url")
+    }
     path.write_text(
         json.dumps({"type": "attempt", **attempt, "attempt": older, "verdict": {}})
         + "\n"
         + path.read_text()
     )
 
-    assert streak(tmp_path).count == 3
+    sequence = streak(tmp_path)
+
+    assert sequence.count == 3
+    assert sequence.rejected == ()
+    assert sequence.ignored == (path.name,)
+
+
+def test_a_standalone_legacy_file_does_not_interrupt_the_sequence(
+    tmp_path: Path,
+) -> None:
+    for index in range(3):
+        write_round(tmp_path, index, passed=True)
+    legacy = tmp_path / "20260922T000009Z-legacy.jsonl"
+    legacy.write_text(json.dumps({"type": "report", "broken": True}) + "\n")
+
+    sequence = streak(tmp_path)
+
+    assert sequence.count == 3
+    assert sequence.rejected == ()
+    assert sequence.ignored == (legacy.name,)
+
+
+def test_an_invalid_r4_default_file_is_rejected_and_breaks_the_sequence(
+    tmp_path: Path,
+) -> None:
+    for index in range(3):
+        write_round(tmp_path, index, passed=True)
+    path = tmp_path / "20260922T000009Z-invalid.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "record_type": "report",
+                "type": "default",
+                "round_id": path.stem,
+                "commit": "c1",
+                "dataset_sha256": "s1",
+                "solution_url": "http://127.0.0.1:8001",
+            }
+        )
+        + "\n"
+    )
+
+    sequence = streak(tmp_path)
+
+    assert sequence.count == 0
+    assert sequence.rejected == (path.name,)
+
+
+def test_a_truncated_line_before_a_green_r4_report_rejects_the_round(
+    tmp_path: Path,
+) -> None:
+    for index in range(3):
+        write_round(tmp_path, index, passed=True)
+    path = sorted(tmp_path.glob("*.jsonl"))[-1]
+    path.write_text('{"record_type": "attempt"\n' + path.read_text())
+
+    sequence = streak(tmp_path)
+
+    assert sequence.count == 0
+    assert not sequence.reached
+    assert sequence.rejected == (path.name,)
 
 
 def test_a_report_without_a_verdict_counts_as_red(tmp_path: Path) -> None:

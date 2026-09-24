@@ -1,6 +1,7 @@
 """S14-S16 and the slow half of S18: whole rounds of the stubs against the real
-bank-mcp. Expected numbers come from the plan (revision 2, KR1 and KR2), derived
-from the dataset, never from what the harness returns. Run with `make e2e`."""
+bank-mcp. Expected numbers come from the approved plan, derived from the
+dataset, never from what the harness returns. Calibration runs these cases via
+`make eval name=<name> type=stub`."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -122,7 +123,7 @@ def test_turns_slower_than_15_s_turn_the_p95_gate_red(
     stub = start_stub("refuse", delay_s=15.1)
 
     _, report = run_round(
-        new_round("slow", "dev", dataset),
+        new_round("slow", "default", dataset, stub.url),
         dataset=dataset,
         bank=bank_server.bank,
         solution=Solution(stub.url),

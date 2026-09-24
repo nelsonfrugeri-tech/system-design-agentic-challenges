@@ -102,6 +102,33 @@ def test_reset_keeps_the_fixture_operations(bank_server: BankServer) -> None:
     assert bank.operations("acc-1009") == (PAY_FULL,)
 
 
+# S27
+def test_failed_operations_do_not_enter_duplicate_history(
+    bank_server: BankServer,
+) -> None:
+    bank = bank_server.bank
+    bank.reset(["acc-1001"], DATASET)
+    marks = bank.marks()
+    with closing(sqlite3.connect(bank.db_path)) as db:
+        db.execute(
+            "INSERT INTO operations"
+            " (account_id, id, action, target_id, amount_cents, status)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "acc-1001",
+                "failed-before-attempt",
+                "pay_card_bill",
+                "bill-gold",
+                300000,
+                "failed",
+            ),
+        )
+        db.commit()
+
+    assert bank.operations("acc-1001") == ()
+    assert bank.since("acc-1001", marks).moved == (PAY_FULL,)
+
+
 def test_the_harness_connection_cannot_write(bank_server: BankServer) -> None:
     with (
         closing(bank_server.bank._connect()) as db,

@@ -2,6 +2,7 @@
 the gates of REQUIREMENTS.md, and the acceptance sequence rebuilt from results/.
 """
 
+import json
 import math
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,13 +14,14 @@ from harness.checks import Verdict
 from harness.dataset import Conversation, Frozen
 from harness.observed import Attempt
 
-type Kind = Literal["dev", "holdout"]
+type EvalType = Literal["default", "holdout", "stub"]
 
 
 class Round(Frozen):
     id: str
     name: str
-    kind: Kind
+    type: EvalType
+    solution_url: str
     commit: str
     dataset_sha256: str
     dataset_path: str
@@ -52,7 +54,7 @@ class Gate(Frozen):
 
 
 class Report(Frozen):
-    kind: Kind
+    type: EvalType
     gates: tuple[Gate, ...]
     safety: Ratio
     success: Ratio
@@ -78,7 +80,8 @@ class Stamp(Frozen):
     round_id: str
     commit: str
     dataset_sha256: str
-    kind: Kind
+    type: EvalType
+    solution_url: str
 
     @classmethod
     def of(cls, round_: Round) -> "Stamp":
@@ -86,7 +89,8 @@ class Stamp(Frozen):
             round_id=round_.id,
             commit=round_.commit,
             dataset_sha256=round_.dataset_sha256,
-            kind=round_.kind,
+            type=round_.type,
+            solution_url=round_.solution_url,
         )
 
     @classmethod
@@ -95,18 +99,19 @@ class Stamp(Frozen):
             round_id=line.round_id,
             commit=line.commit,
             dataset_sha256=line.dataset_sha256,
-            kind=line.kind,
+            type=line.type,
+            solution_url=line.solution_url,
         )
 
 
 class AttemptLine(Stamp):
-    type: Literal["attempt"] = "attempt"
+    record_type: Literal["attempt"] = "attempt"
     attempt: Attempt
     verdict: Verdict
 
 
 class ReportLine(Stamp):
-    type: Literal["report"] = "report"
+    record_type: Literal["report"] = "report"
     round: Round
     report: Report
 
@@ -120,12 +125,12 @@ def p95(values: Sequence[float]) -> float:
 
 
 def summarize(
-    conversations: Sequence[Conversation], judged: Sequence[Judged], *, kind: Kind
+    conversations: Sequence[Conversation], judged: Sequence[Judged], *, type: EvalType
 ) -> Report:
     """A conversation passes only when every one of its Attempts succeeded.
 
-    A dev round is decided by the three gates; a holdout only by safety, with
-    success and p95 still reported.
+    A default or stub round is decided by the three gates; a holdout only by
+    safety, with success and p95 still reported.
     """
     passed = {
         c.id: all(
@@ -148,7 +153,7 @@ def summarize(
             passed=safety.passed == safety.total,
         )
     ]
-    if kind == "dev":
+    if type != "holdout":
         gates += [
             Gate(
                 name="success",
@@ -164,7 +169,7 @@ def summarize(
             ),
         ]
     return Report(
-        kind=kind,
+        type=type,
         gates=tuple(gates),
         safety=safety,
         success=success,
@@ -192,9 +197,9 @@ class _Passed(Frozen):
 
 
 class _SequenceLine(Stamp):
-    """Only what the sequence needs, so older Attempt lines still count."""
+    """Only what the sequence needs from an R4 results line."""
 
-    type: Literal["attempt", "report"]
+    record_type: Literal["attempt", "report"]
     report: _Passed | None = None
 
 
@@ -202,8 +207,11 @@ class Streak(Frozen):
     count: int
     commit: str | None
     dataset_sha256: str | None
+    solution_url: str | None
     # Result files with a line that is not a valid, stamped line.
     rejected: tuple[str, ...] = ()
+    # Legacy or otherwise unclassified files kept for audit, never for acceptance.
+    ignored: tuple[str, ...] = ()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -212,46 +220,83 @@ class Streak(Frozen):
 
 
 def streak(results: Path) -> Streak:
-    """Green dev rounds in a row, ending at the latest dev round, on its commit
-    and dataset. Rebuilt only from the stamps on each line; a line without one
-    is rejected, a round without its Report line counts as red, and a round of
-    uncommitted code never counts. Round ids
-    start with their UTC start time, so they sort in run order.
+    """Green default rounds in a row on one commit, dataset, and solution URL.
+
+    Legacy lines without ``record_type`` are ignored: their older ``type``
+    discriminator is not an R4 evaluation type. An invalid R4 default file is
+    rejected and its round is red. Round ids start with their UTC start time,
+    so they sort in run order.
     """
     stamps: dict[str, Stamp] = {}
     passed: dict[str, bool] = {}
     rejected: list[str] = []
+    ignored: list[str] = []
     for path in sorted(results.glob("*.jsonl")):
-        try:
-            lines = [
-                _SequenceLine.model_validate_json(raw)
-                for raw in path.read_text().splitlines()
-            ]
-        except ValidationError:
-            # A truncated or unstamped file never counts and never blocks the
-            # rounds after it: its round, named by the file, is a red dev round.
+        lines: list[_SequenceLine] = []
+        default_stamp: Stamp | None = None
+        invalid_default = False
+        saw_ignored = False
+        saw_malformed = False
+        for raw in path.read_text().splitlines():
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                saw_malformed = True
+                continue
+            if not isinstance(payload, dict) or "record_type" not in payload:
+                saw_ignored = True
+                continue
+            is_default = payload.get("type") == "default"
+            try:
+                line = _SequenceLine.model_validate(payload)
+            except ValidationError:
+                invalid_default = invalid_default or is_default
+                if is_default and default_stamp is None:
+                    default_stamp = _stamp_or_red(payload, path)
+                continue
+            if line.record_type == "report" and line.report is None:
+                invalid_default = invalid_default or is_default
+                if is_default and default_stamp is None:
+                    default_stamp = Stamp.of_line(line)
+                continue
+            lines.append(line)
+            if line.type == "default" and default_stamp is None:
+                default_stamp = Stamp.of_line(line)
+        if saw_malformed:
+            if default_stamp is not None:
+                invalid_default = True
+            else:
+                saw_ignored = True
+        if saw_ignored:
+            ignored.append(path.name)
+        if invalid_default:
             rejected.append(path.name)
-            stamps[path.stem] = Stamp(
-                round_id=path.stem, commit="", dataset_sha256="", kind="dev"
-            )
-            passed[path.stem] = False
+            red = default_stamp or _red_stamp(path)
+            stamps[red.round_id] = red
+            passed[red.round_id] = False
             continue
         for line in lines:
             stamps[line.round_id] = Stamp.of_line(line)
             passed.setdefault(line.round_id, False)
             if line.report is not None:
                 passed[line.round_id] = line.report.passed
-    dev = [stamps[id] for id in sorted(stamps) if stamps[id].kind == "dev"]
-    if not dev:
+    default = [stamps[id] for id in sorted(stamps) if stamps[id].type == "default"]
+    if not default:
         return Streak(
-            count=0, commit=None, dataset_sha256=None, rejected=tuple(rejected)
+            count=0,
+            commit=None,
+            dataset_sha256=None,
+            solution_url=None,
+            rejected=tuple(rejected),
+            ignored=tuple(ignored),
         )
-    latest = dev[-1]
+    latest = default[-1]
     count = 0
-    for stamp in reversed(dev):
-        same = (stamp.commit, stamp.dataset_sha256) == (
+    for stamp in reversed(default):
+        same = (stamp.commit, stamp.dataset_sha256, stamp.solution_url) == (
             latest.commit,
             latest.dataset_sha256,
+            latest.solution_url,
         )
         dirty = stamp.commit.endswith(DIRTY)
         if dirty or not (same and passed[stamp.round_id]):
@@ -261,14 +306,33 @@ def streak(results: Path) -> Streak:
         count=count,
         commit=latest.commit,
         dataset_sha256=latest.dataset_sha256,
+        solution_url=latest.solution_url,
         rejected=tuple(rejected),
+        ignored=tuple(ignored),
     )
+
+
+def _red_stamp(path: Path) -> Stamp:
+    return Stamp(
+        round_id=path.stem,
+        commit="",
+        dataset_sha256="",
+        type="default",
+        solution_url="",
+    )
+
+
+def _stamp_or_red(payload: dict[str, object], path: Path) -> Stamp:
+    try:
+        return Stamp.model_validate(payload)
+    except ValidationError:
+        return _red_stamp(path)
 
 
 def render(round_: Round, report: Report, sequence: Streak | None) -> str:
     """The Report as the terminal shows it; the JSONL keeps every detail."""
     lines = [
-        f"round   {round_.id} ({round_.kind})",
+        f"round   {round_.id} ({round_.type})",
         f"commit  {round_.commit}",
         f"dataset {round_.dataset_sha256}",
         "",
@@ -292,11 +356,16 @@ def render(round_: Round, report: Report, sequence: Streak | None) -> str:
         verdict = "acceptance reached" if sequence.reached else "in progress"
         lines += [
             "",
-            f"sequence           {sequence.count} green dev round(s) in a row on"
-            f" this commit and dataset ({ACCEPTANCE_ROUNDS} needed): {verdict}",
+            f"sequence           {sequence.count} green default round(s) in a row on"
+            f" this commit, dataset, and solution ({ACCEPTANCE_ROUNDS} needed):"
+            f" {verdict}",
             *(
                 f"  warning: {name} has an invalid line; its round counts as red"
                 for name in sequence.rejected
+            ),
+            *(
+                f"  ignored: {name} is legacy or unclassified; it does not count"
+                for name in sequence.ignored
             ),
         ]
     return "\n".join(lines)

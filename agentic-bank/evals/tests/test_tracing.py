@@ -43,7 +43,7 @@ def test_each_attempt_is_a_trace_and_its_id_is_the_session(
     )
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill", "changed-amount"]))
     stub = start_stub("refuse")
-    round_ = new_round("traced", "dev", dataset)
+    round_ = new_round("traced", "default", dataset, stub.url)
 
     run_round(
         round_,

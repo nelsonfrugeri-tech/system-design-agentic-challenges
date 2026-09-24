@@ -24,7 +24,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["e2e: whole rounds of the stubs against the real bank-mcp (make e2e)"]
+markers = ["e2e: slow whole-round tests; run with make test-e2e"]
 addopts = "-m 'not e2e'"
 
 [tool.ruff]
