@@ -160,19 +160,36 @@ turn. Traces are diagnostic and never pass or fail a round.
 
 ```text
 evals/
-├── datasets/              the 13 conversations and their accounts
+├── datasets/                  the 13 conversations and their accounts
 ├── harness/
-│   ├── dataset.py         validates the dataset; its SHA-256 is its identity
-│   ├── bank.py            read-only SQLite inspection, marks, and reset orchestration
-│   ├── solution.py        GET /health and POST /chat, without retries
-│   ├── observed.py        observations without judgment
-│   ├── checks.py          per-execution verdict; never reads assistant text
-│   ├── report.py          gates, JSONL schema, report, and acceptance streak
-│   ├── calibration.py     private stub lifecycle and expected-score comparison
-│   ├── tracing.py         Langfuse traces
-│   └── run.py             public CLI and round orchestration
+│   ├── domain/                pure values and rules; stdlib and Pydantic only
+│   │   ├── expected.py        what a conversation should do
+│   │   ├── observations.py    what an Attempt observed, without judgment
+│   │   ├── verdicts.py        the verdict of one Attempt
+│   │   ├── judging.py         judge(): the verdict; never reads assistant text
+│   │   ├── reports.py         Round, Report, gates and the JSONL record types
+│   │   ├── summarization.py   summarize(): the Report and the p95
+│   │   ├── acceptance.py      streak(): green default rounds in a row
+│   │   └── calibration.py     stub modes, expectations and mismatches
+│   ├── application/           the lifecycles, over the domain and the ports
+│   │   ├── ports/             bank, solution, tracing and results, as Protocols
+│   │   ├── preflight.py       the solution answers and the MCP writes this bank.db
+│   │   ├── attempt.py         one Attempt: reset, then one POST per turn
+│   │   ├── attempt_ledger.py  late activity before the next reset
+│   │   ├── round.py           the schedule of a Round
+│   │   └── calibration.py     every stub mode compared with the baseline
+│   ├── adapters/              SQLite and MCP, HTTP, Langfuse, JSONL, Git, processes
+│   ├── presentation/          what the terminal prints
+│   └── run.py                 the composition root: main() and exit codes
 ├── baselines/
-│   ├── stub.py            private fake assistants
-│   └── expected.json      calibration oracle
-└── tests/                 unit, integration, and end-to-end tests
+│   ├── behaviours.py          refuse, pay and oracle
+│   ├── app.py                 the fake assistant's HTTP service
+│   ├── stub.py                the stub command line
+│   └── expected.json          calibration oracle
+└── tests/                     architecture, domain, application, adapters, e2e
 ```
+
+Dependencies point inward: the domain imports only itself and Pydantic, the
+application only the domain and its ports, and only `run.py` wires adapters in.
+`tests/architecture` enforces this with the AST, along with functions of at
+most 50 lines and at most 3 public methods per class outside port adapters.
