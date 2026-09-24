@@ -49,15 +49,21 @@ def main(
     _dataset_override: Path | None = None,
     _timeout_s: float = TURN_TIMEOUT_S,
     _settle: Settle = DEFAULT_SETTLE,
+    _commit: str | None = None,
 ) -> int:
-    """Exit 0 approved, 1 gate failed, 2 usage/preflight, 3 harness error."""
+    """Exit 0 approved, 1 gate failed, 2 usage/preflight, 3 harness error.
+
+    The underscored keywords are test seams, not part of the command line.
+    """
     try:
         args = _parse(argv)
         dataset = load_dataset(_dataset_override or _dataset_path(args.type, args.path))
         print(f"dataset {dataset.path}\nsha256  {dataset.sha256}", flush=True)
         if args.type == "stub":
             return _calibrate(args, dataset, timeout_s=_timeout_s, settle=_settle)
-        return _run_default(args, dataset, timeout_s=_timeout_s, settle=_settle)
+        return _run_default(
+            args, dataset, timeout_s=_timeout_s, settle=_settle, commit=_commit
+        )
     except SystemExit as exit_:
         return 0 if exit_.code in (0, None) else 2
     except UsageFailed as error:
@@ -90,7 +96,12 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def _run_default(
-    args: argparse.Namespace, dataset: Dataset, *, timeout_s: float, settle: Settle
+    args: argparse.Namespace,
+    dataset: Dataset,
+    *,
+    timeout_s: float,
+    settle: Settle,
+    commit: str | None,
 ) -> int:
     bank = SqliteBank(data_dir=args.bank_data_dir)
     solution = HttpSolution(args.solution_url, timeout_s=timeout_s)
@@ -106,7 +117,7 @@ def _run_default(
             f"preflight: warning: {warning}; the round runs without traces",
             file=sys.stderr,
         )
-    round_ = _new_round(args.name, args.type, dataset, solution.url)
+    round_ = _new_round(args.name, args.type, dataset, solution.url, commit)
     writer = ResultWriter(args.results, round_.id)
     report = run_round(
         round_,
@@ -123,13 +134,19 @@ def _run_default(
     return 0 if report.passed else 1
 
 
-def _new_round(name: str, type: EvalType, dataset: Dataset, solution_url: str) -> Round:
+def _new_round(
+    name: str,
+    type: EvalType,
+    dataset: Dataset,
+    solution_url: str,
+    commit: str | None = None,
+) -> Round:
     return Round.start(
         name,
         type,
         dataset,
         solution_url,
-        commit=commit_of(),
+        commit=commit or commit_of(),
         now=datetime.now(UTC),
         nonce=uuid.uuid4().hex[:6],
     )

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.adapters.dataset_file import DATASET, load_dataset
+from harness.adapters.dataset_file import load_dataset
 from harness.adapters.langfuse import LangfuseTracing
 from harness.adapters.solution_http import HttpSolution
 from harness.domain.reports import AttemptLine, Report, ReportLine
@@ -33,7 +33,11 @@ UNAUTHORIZED = {
 
 
 def round_of(
-    bank_server: BankServer, stub: StubServer, results: Path
+    bank_server: BankServer,
+    stub: StubServer,
+    results: Path,
+    *,
+    commit: str | None = None,
 ) -> tuple[int, Report, list[AttemptLine]]:
     code = main(
         [
@@ -47,7 +51,8 @@ def round_of(
             str(bank_server.bank.data_dir),
             "--results",
             str(results),
-        ]
+        ],
+        _commit=commit,
     )
     parsed = read_lines(sorted(results.glob("*.jsonl"))[-1])
     report = parsed[-1]
@@ -55,33 +60,31 @@ def round_of(
     return code, report.report, [p for p in parsed if isinstance(p, AttemptLine)]
 
 
-# S14. The rounds carry one fixed commit, so the gate also runs on a working
-# tree with changes (plan revision 5, KR6); a dirty stamp never counts, and that
-# rule has its own unit test.
+# S14, through the command line. The rounds carry one fixed commit, so the gate
+# also runs on a working tree with changes (plan revision 5, KR6); a dirty stamp
+# never counts, and that rule has its own unit test.
 def test_three_oracle_rounds_are_green_and_reach_acceptance(
-    bank_server: BankServer, start_stub: StartStub, tmp_path: Path
+    bank_server: BankServer,
+    start_stub: StartStub,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    dataset = load_dataset(DATASET)
     stub = start_stub("oracle")
     results = tmp_path / "results"
 
     for count in (1, 2, 3):
-        round_ = new_round("e2e", "default", dataset, stub.url).model_copy(
-            update={"commit": "e2e-fixed-commit"}
+        code, report, _ = round_of(
+            bank_server, stub, results, commit="e2e-fixed-commit"
         )
-        _, report = run_round_into(
-            round_,
-            dataset=dataset,
-            bank=bank_server.bank,
-            solution=HttpSolution(stub.url),
-            tracing=LangfuseTracing.disabled(),
-            results=results,
-        )
+        out = capsys.readouterr().out
+        assert code == 0
         assert (str(report.safety), str(report.success)) == ("39/39", "13/13")
         assert all(gate.passed for gate in report.gates)
         assert streak(results).count == count
+        assert f"sequence           {count} green default round(s)" in out
 
     assert streak(results).reached
+    assert "(3 needed): acceptance reached" in out
 
 
 # S15
