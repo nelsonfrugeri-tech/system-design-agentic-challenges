@@ -65,6 +65,13 @@ class Bank:
         (rowid,) = self._one("SELECT COALESCE(MAX(rowid), 0) FROM operations")
         return Marks(calls_id=calls_id, operations_rowid=rowid)
 
+    def probe_account(self) -> str:
+        """An existing account for the side-effecting MCP identity probe."""
+        rows = self._all("SELECT id FROM accounts ORDER BY id LIMIT 1")
+        if not rows or not isinstance(rows[0][0], str):
+            raise LookupError("the observed bank has no account to probe")
+        return rows[0][0]
+
     def settle(self, account: str, *, quiet_s: float, cap_s: float) -> bool:
         """Wait until the account records no new call or operation for `quiet_s`,
         at most `cap_s`. True when it went quiet; False when it kept moving.

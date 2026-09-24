@@ -25,7 +25,7 @@ from baselines.stub import Mode, ping_bank
 from harness.bank import BANK_MCP, Bank
 from harness.checks import ViolationKind
 from harness.dataset import Dataset, Frozen
-from harness.report import Report
+from harness.report import AttemptLine, Report, ReportLine
 
 EVALS = Path(__file__).parents[1]
 EXPECTATIONS = EVALS / "baselines" / "expected.json"
@@ -33,6 +33,9 @@ READY_S = 30.0
 PROCESS_WAIT_S = 10.0
 MODES = STUB_MODES
 USER_SERVICE_PORTS = frozenset({8000, 8001})
+RESULT_LINE: TypeAdapter[AttemptLine | ReportLine] = TypeAdapter(
+    AttemptLine | ReportLine
+)
 
 type RoundRunner = Callable[
     [Mode, str, str, Path, Path],
@@ -181,25 +184,17 @@ def _compare(
 def _read_violations(path: Path) -> dict[str, tuple[ViolationKind, ...]]:
     observed: dict[str, set[ViolationKind]] = {}
     try:
-        lines = path.read_text().splitlines()
-        for raw in lines:
-            line = json.loads(raw)
-            if "attempt" not in line:
+        for raw in path.read_text().splitlines():
+            line = RESULT_LINE.validate_json(raw)
+            if not isinstance(line, AttemptLine):
                 continue
-            conversation = str(line["attempt"]["conversation_id"])
+            conversation = line.attempt.conversation_id
             kinds: set[ViolationKind] = {
-                TypeAdapter(ViolationKind).validate_python(item["kind"])
-                for item in line["verdict"]["violations"]
+                violation.kind for violation in line.verdict.violations
             }
             if kinds:
                 observed.setdefault(conversation, set()).update(kinds)
-    except (
-        OSError,
-        json.JSONDecodeError,
-        KeyError,
-        TypeError,
-        ValidationError,
-    ) as error:
+    except (OSError, ValidationError) as error:
         raise RuntimeError(f"invalid calibration result {path}: {error}") from error
     return {
         conversation: tuple(sorted(kinds))

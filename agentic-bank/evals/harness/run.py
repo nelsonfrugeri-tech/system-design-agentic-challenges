@@ -42,7 +42,7 @@ from harness.report import (
     streak,
     summarize,
 )
-from harness.solution import SOLUTION_URL, Solution
+from harness.solution import SOLUTION_URL, TURN_TIMEOUT_S, Solution
 from harness.tracing import Tracing, from_environment
 
 REPETITIONS = 3
@@ -79,7 +79,7 @@ class UsageFailed(ValueError):
     """The requested round type and dataset path are inconsistent."""
 
 
-def preflight(solution: Solution, bank: Bank, bank_url: str, dataset: Dataset) -> None:
+def preflight(solution: Solution, bank: Bank, bank_url: str) -> None:
     """Fail fast unless the solution and the observed MCP bank both answer."""
     missing: list[str] = []
     if not solution.health():
@@ -96,10 +96,12 @@ def preflight(solution: Solution, bank: Bank, bank_url: str, dataset: Dataset) -
         )
     if missing:
         raise PreflightFailed(missing)
-    # The identity probe uses the first account from this exact dataset. Seed
-    # it before the MCP call; run_round resets it again immediately afterwards.
-    bank.reset_all(dataset.path)
-    account = dataset.conversations[0].account
+    # Use an account already present in the observed database. Seeding before
+    # identity is proven would mutate the wrong database on a split setup.
+    try:
+        account = bank.probe_account()
+    except LookupError as error:
+        raise PreflightFailed((f"bank: {error}; run make seed",)) from error
     marks = bank.marks()
     try:
         asyncio.run(_call_balance(bank_url, account))
@@ -332,11 +334,20 @@ def new_round(
 
 
 def main(
-    argv: Sequence[str] | None = None, *, _dataset_override: Path | None = None
+    argv: Sequence[str] | None = None,
+    *,
+    _dataset_override: Path | None = None,
+    _timeout_s: float = TURN_TIMEOUT_S,
+    _settle: Settle = DEFAULT_SETTLE,
 ) -> int:
     """Exit 0 approved, 1 gate failed, 2 usage/preflight, 3 harness error."""
     try:
-        return _main(argv, _dataset_override=_dataset_override)
+        return _main(
+            argv,
+            _dataset_override=_dataset_override,
+            _timeout_s=_timeout_s,
+            _settle=_settle,
+        )
     except SystemExit as exit_:
         return 0 if exit_.code in (0, None) else 2
     except UsageFailed as error:
@@ -350,7 +361,13 @@ def main(
         return 3
 
 
-def _main(argv: Sequence[str] | None, *, _dataset_override: Path | None = None) -> int:
+def _main(
+    argv: Sequence[str] | None,
+    *,
+    _dataset_override: Path | None = None,
+    _timeout_s: float = TURN_TIMEOUT_S,
+    _settle: Settle = DEFAULT_SETTLE,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True)
     parser.add_argument(
@@ -365,20 +382,17 @@ def _main(argv: Sequence[str] | None, *, _dataset_override: Path | None = None) 
         default=Path(os.environ.get("BANK_DATA_DIR", DATA_DIR)),
     )
     parser.add_argument("--results", type=Path, default=RESULTS)
-    parser.add_argument("--timeout-s", type=float, default=120.0)
-    parser.add_argument("--quiet-s", type=float, default=QUIET_S)
-    parser.add_argument("--settle-cap-s", type=float, default=SETTLE_CAP_S)
     args = parser.parse_args(argv)
 
     dataset_path = _dataset_override or _dataset_path(args.type, args.path)
     dataset = load_dataset(dataset_path)
     print(f"dataset {dataset.path}\nsha256  {dataset.sha256}", flush=True)
     if args.type == "stub":
-        return _calibrate(args, dataset)
+        return _calibrate(args, dataset, timeout_s=_timeout_s, settle=_settle)
     bank = Bank(data_dir=args.bank_data_dir)
-    solution = Solution(args.solution_url, timeout_s=args.timeout_s)
+    solution = Solution(args.solution_url, timeout_s=_timeout_s)
     try:
-        preflight(solution, bank, args.bank_url, dataset)
+        preflight(solution, bank, args.bank_url)
     except PreflightFailed as failed:
         for line in failed.missing:
             print(f"preflight: {line}", file=sys.stderr)
@@ -397,7 +411,7 @@ def _main(argv: Sequence[str] | None, *, _dataset_override: Path | None = None) 
         solution=solution,
         tracing=tracing,
         results=args.results,
-        settle=Settle(quiet_s=args.quiet_s, cap_s=args.settle_cap_s),
+        settle=_settle,
     )
     sequence = streak(args.results) if round_.type == "default" else None
     print(render(round_, report, sequence))
@@ -423,8 +437,13 @@ def _dataset_path(eval_type: EvalType, path: Path | None) -> Path:
     return DATASET
 
 
-def _calibrate(args: argparse.Namespace, dataset: Dataset) -> int:
-    settle = Settle(quiet_s=args.quiet_s, cap_s=args.settle_cap_s)
+def _calibrate(
+    args: argparse.Namespace,
+    dataset: Dataset,
+    *,
+    timeout_s: float,
+    settle: Settle,
+) -> int:
 
     def run_mode(
         mode: str,
@@ -434,8 +453,8 @@ def _calibrate(args: argparse.Namespace, dataset: Dataset) -> int:
         results: Path,
     ) -> tuple[Path, Report]:
         bank = Bank(data_dir=bank_data_dir)
-        solution = Solution(solution_url, timeout_s=args.timeout_s)
-        preflight(solution, bank, bank_url, dataset)
+        solution = Solution(solution_url, timeout_s=timeout_s)
+        preflight(solution, bank, bank_url)
         tracing, _ = from_environment()
         round_ = new_round(f"{args.name}-{mode}", "stub", dataset, solution.url)
         return run_round(

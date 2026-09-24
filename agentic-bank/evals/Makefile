@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help sync env format format-check lint typecheck test check pre-commit eval stub
+.PHONY: help sync env format format-check lint typecheck test test-e2e check pre-commit eval stub
 
 # The harness reads $(BANK_DATA_DIR)/bank.db, the same file bank-mcp serves.
 BANK_DATA_DIR ?= $(abspath ../.data)
@@ -26,9 +26,10 @@ help:
 	@echo 'lint          Run Ruff'
 	@echo 'typecheck     Run strict mypy'
 	@echo 'test          Unit and local integration tests (spawn bank-mcp and the stub)'
-	@echo 'check         format-check, lint, typecheck, test'
-	@echo 'pre-commit    format, then check'
-	@echo 'eval          Run: make eval name=<name> [type=default|stub] or type=holdout path=/absolute/file'
+	@echo 'test-e2e      Slow whole-round streak and latency tests'
+	@echo 'check         format-check, lint, typecheck, test, test-e2e'
+	@echo 'pre-commit    format and run checks that do not require a clean commit'
+	@echo 'eval          Run: make eval name=<name> [type=default|stub]; evaluator only: type=holdout path=/absolute/file'
 	@echo 'stub          Serve a fake assistant: make stub mode=oracle|refuse|pay [port=8000]'
 
 sync:
@@ -54,20 +55,27 @@ typecheck:
 test:
 	uv run --locked pytest -q
 
+test-e2e:
+	uv run --locked pytest -q -m e2e
+
 check:
 	$(MAKE) format-check
 	$(MAKE) lint
 	$(MAKE) typecheck
 	$(MAKE) test
+	$(MAKE) test-e2e
 
 pre-commit:
 	$(MAKE) format
-	$(MAKE) check
+	$(MAKE) format-check
+	$(MAKE) lint
+	$(MAKE) typecheck
+	$(MAKE) test
 
 eval:
 	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; \
 	uv run --locked python -m harness.run --name "$(name)" --type "$(type)" $(if $(path),--path "$(path)",) --solution-url "$(SOLUTION_URL)"; \
-	code=$$?; echo "harness exit $$code (0 approved, 1 a gate failed, 2 preflight, 3 harness error)"; exit $$code
+	code=$$?; echo "harness exit $$code (0 approved, 1 a gate failed, 2 invalid invocation or preflight, 3 harness error)"; exit $$code
 
 stub:
 	uv run --locked python -m baselines.stub --mode "$(mode)" --port "$(port)" --bank-url "$(BANK_URL)" --dataset "$(dataset)"

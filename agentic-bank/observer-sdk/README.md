@@ -48,7 +48,13 @@ A caller in Python gets both with the Langfuse SDK and OpenTelemetry:
 from langfuse import propagate_attributes
 from opentelemetry import propagate
 
-with propagate_attributes(session_id=run_id, environment="evals", as_baggage=True):
+with propagate_attributes(
+    session_id=attempt_trace_id,
+    environment="evals",
+    tags=[round_id],
+    metadata={"round_id": round_id},
+    as_baggage=True,
+):
     with langfuse.start_as_current_observation(name="conversation"):
         headers = {"X-Account-Id": account_id}
         propagate.inject(headers)   # adds traceparent and baggage
@@ -60,8 +66,8 @@ process and never reach the solution.
 
 ## Interaction with the eval harness
 
-The R4 harness records the normalized `solution_url` with every JSONL line and
-uses it, together with the Git commit and dataset SHA-256, to identify an
+The R4 harness records the `solution_url`, without a trailing slash, in every
+JSONL line. Together with the Git commit and dataset SHA-256, it identifies an
 acceptance streak. The URL identifies the evaluated service; tracing does not.
 
 Every eval turn has a 120-second HTTP timeout. A timeout or HTTP error fails both

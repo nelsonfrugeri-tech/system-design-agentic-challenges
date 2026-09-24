@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sqlite3
 import threading
 import time
 from collections import Counter
@@ -22,6 +23,7 @@ from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
 
 type StartStub = Callable[..., StubServer]
+TEST_SETTLE = Settle(quiet_s=0.3, cap_s=120.0)
 
 
 def subset(tmp_path: Path, ids: Sequence[str], *, rename: bool = False) -> Path:
@@ -47,6 +49,8 @@ def run(
     results: Path,
     *extra: str,
     bank_url: str | None = None,
+    timeout_s: float = 120.0,
+    settle: Settle = TEST_SETTLE,
 ) -> int:
     dataset_option = (
         ["--path", str(dataset)]
@@ -65,14 +69,13 @@ def run(
         str(bank_server.bank.data_dir),
         "--results",
         str(results),
-        # The end-of-round quiet wait; tests that need another pass it later.
-        "--quiet-s",
-        "0.3",
         *extra,
     ]
     return main(
         argv,
         _dataset_override=None if dataset_option else dataset,
+        _timeout_s=timeout_s,
+        _settle=settle,
     )
 
 
@@ -127,10 +130,8 @@ def test_a_turn_over_the_timeout_is_a_timeout_and_is_not_resent(
         stub,
         dataset,
         tmp_path / "results",
-        "--timeout-s",
-        "0.5",
-        "--quiet-s",
-        "1.5",
+        timeout_s=0.5,
+        settle=Settle(quiet_s=1.5, cap_s=120.0),
     )
 
     parsed = lines(tmp_path / "results")
@@ -158,10 +159,8 @@ def test_money_moved_after_a_timeout_belongs_to_the_turn_that_timed_out(
         stub,
         dataset,
         tmp_path / "results",
-        "--timeout-s",
-        "0.3",
-        "--quiet-s",
-        "1.5",
+        timeout_s=0.3,
+        settle=Settle(quiet_s=1.5, cap_s=120.0),
     )
 
     attempts = [a for a in lines(tmp_path / "results") if isinstance(a, AttemptLine)]
@@ -217,6 +216,23 @@ def test_a_usage_error_is_not_a_preflight_failure(argv: list[str], code: int) ->
 
 def test_default_rejects_dataset_override_from_the_cli() -> None:
     assert main(["--name", "unsafe", "--dataset", str(DATASET)]) == 2
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--timeout-s", "600"),
+        ("--quiet-s", "0.05"),
+        ("--settle-cap-s", "0.05"),
+    ],
+)
+def test_public_rounds_reject_timing_overrides(
+    flag: str, value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["--name", "invalid", flag, value]) == 2
+    error = capsys.readouterr().err
+    assert "unrecognized arguments" in error
+    assert "preflight:" not in error
 
 
 class PaysAnotherAccount(Solution):
@@ -434,21 +450,34 @@ def test_preflight_rejects_an_mcp_serving_a_different_database(
     observed = Bank(data_dir=tmp_path / "other-bank")
     observed.data_dir.mkdir()
     observed.reset_all(dataset.path)
+    with sqlite3.connect(observed.db_path) as db:
+        db.execute("UPDATE accounts SET balance_cents = 1 WHERE id = 'acc-1001'")
+        db.commit()
+    state_before = observed.final_state("acc-1001")
+    marks_before = observed.marks()
 
-    with pytest.raises(PreflightFailed, match="different banks"):
-        preflight(
-            Solution(start_stub("refuse").url), observed, bank_server.url, dataset
-        )
+    try:
+        with pytest.raises(PreflightFailed, match="different banks"):
+            preflight(Solution(start_stub("refuse").url), observed, bank_server.url)
+        assert observed.final_state("acc-1001") == state_before
+        assert observed.marks() == marks_before
+    finally:
+        bank_server.bank.reset_all(DATASET)
 
 
 @pytest.mark.parametrize(
-    "path",
-    ["relative.json", str(DATASET), "/definitely/missing/holdout.json"],
+    ("path", "message"),
+    [
+        ("relative.json", "holdout path must be absolute"),
+        (str(DATASET), "holdout path must be outside the repository"),
+        ("/definitely/missing/holdout.json", "holdout path is not a file"),
+    ],
 )
 def test_holdout_path_must_be_absolute_existing_and_outside_the_repository(
-    path: str,
+    path: str, message: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["--name", "invalid", "--type", "holdout", "--path", path]) == 2
+    assert message in capsys.readouterr().err
 
 
 # S20
