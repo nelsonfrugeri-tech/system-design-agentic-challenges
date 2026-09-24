@@ -8,8 +8,9 @@ from contextlib import closing
 
 import pytest
 
-from baselines.stub import call_bank
-from harness.dataset import DATASET, FinalState, Movement
+from baselines.behaviours import call_bank
+from harness.adapters.dataset_file import DATASET
+from harness.domain.expected import FinalState, Movement
 from tests.conftest import BankServer
 
 PAY_FULL = Movement(action="pay_card_bill", target_id="bill-gold", amount_cents=300000)

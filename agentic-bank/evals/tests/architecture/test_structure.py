@@ -104,7 +104,6 @@ def test_a_test_importing_another_test_is_rejected() -> None:
     assert not cross_test_imports("tests.a", "from tests.support import lines\n")
 
 
-@pytest.mark.xfail(strict=True, reason="until slice 7: helpers move to support")
 def test_no_test_imports_another_test_module() -> None:
     violations = [
         v for name, source in TESTS.items() for v in cross_test_imports(name, source)

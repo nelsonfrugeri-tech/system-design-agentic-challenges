@@ -8,7 +8,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from harness.dataset import DATASET, Movement, load_dataset
+from harness.adapters.dataset_file import DATASET, load_dataset
+from harness.domain.expected import Movement
 
 
 def fixture(**overrides: object) -> dict[str, Any]:

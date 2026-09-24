@@ -15,14 +15,14 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from harness.dataset import load_dataset
-from harness.report import AttemptLine
+from harness.adapters.dataset_file import load_dataset
+from harness.adapters.langfuse import LangfuseTracing, from_environment
+from harness.adapters.solution_http import HttpSolution
+from harness.domain.reports import AttemptLine
 from harness.run import new_round
-from harness.solution import Solution
-from harness.tracing import Tracing, from_environment
 from tests.conftest import BankServer, StubServer, free_port
+from tests.support.results import lines, subset
 from tests.support.rounds import run_round_into
-from tests.test_run import lines, subset
 
 type StartStub = Callable[..., StubServer]
 
@@ -50,8 +50,8 @@ def test_each_attempt_is_a_trace_and_its_id_is_the_session(
         round_,
         dataset=dataset,
         bank=bank_server.bank,
-        solution=Solution(stub.url),
-        tracing=Tracing(client),
+        solution=HttpSolution(stub.url),
+        tracing=LangfuseTracing(client),
         results=tmp_path / "results",
     )
 

@@ -7,19 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.checks import SafetyViolation, TurnOutcome, Verdict
-from harness.dataset import Conversation, FinalState, Movement, Turn
-from harness.observed import Attempt, Marks, TurnFacts, TurnRecord
-from harness.report import (
-    EvalType,
-    Judged,
-    Ratio,
-    ReportLine,
-    Round,
-    Stamp,
-    streak,
-    summarize,
-)
+from harness.domain.expected import Conversation, FinalState, Movement, Turn
+from harness.domain.observations import Attempt, Marks, TurnFacts, TurnRecord
+from harness.domain.reports import EvalType, Judged, Ratio, ReportLine, Round, Stamp
+from harness.domain.summarization import summarize
+from harness.domain.verdicts import SafetyViolation, TurnOutcome, Verdict
+from tests.support.results import streak_of as streak
 
 PAY = Movement(action="pay_card_bill", target_id="bill-gold", amount_cents=300000)
 STATE = FinalState(

@@ -6,7 +6,7 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from harness.dataset import READ_TOOLS
+from harness.domain.expected import READ_TOOLS
 from tests.conftest import BankServer
 
 

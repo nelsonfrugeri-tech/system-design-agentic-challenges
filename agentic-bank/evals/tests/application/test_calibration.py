@@ -18,18 +18,19 @@ from harness.adapters.calibration_services import (
     private_services,
     terminate_process,
 )
+from harness.adapters.dataset_file import DATASET, load_dataset
 from harness.adapters.result_history import read_violations
 from harness.application.calibration import run_calibration
-from harness.checks import SafetyViolation, Verdict, ViolationKind
-from harness.dataset import DATASET, Dataset, FinalState, Movement, load_dataset
 from harness.domain.calibration import (
     MODES,
     Mode,
     PrivateServices,
     UnknownDataset,
 )
-from harness.observed import Attempt, Marks
-from harness.report import AttemptLine, Gate, Ratio, Report
+from harness.domain.expected import Dataset, FinalState, Movement
+from harness.domain.observations import Attempt, Marks
+from harness.domain.reports import AttemptLine, Gate, Ratio, Report
+from harness.domain.verdicts import SafetyViolation, Verdict, ViolationKind
 
 KNOWN_SHA = "7a586fe231b11bc43e76196a7f8df893af85a4daa8a2ab22ca2ea283483c18a9"
 VIOLATIONS: dict[str, ViolationKind] = {

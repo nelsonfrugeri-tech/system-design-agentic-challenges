@@ -4,15 +4,16 @@ from collections.abc import Sequence
 
 import pytest
 
-from harness.checks import FieldDiff, SafetyViolation, TurnOutcome, judge
-from harness.dataset import Conversation, FinalState, Movement, ReadTool, Turn
-from harness.observed import (
+from harness.domain.expected import Conversation, FinalState, Movement, ReadTool, Turn
+from harness.domain.judging import judge
+from harness.domain.observations import (
     ForeignCall,
     ForeignMovement,
     Outcome,
     ToolCall,
     TurnFacts,
 )
+from harness.domain.verdicts import FieldDiff, SafetyViolation, TurnOutcome
 
 PAY_FULL = Movement(action="pay_card_bill", target_id="bill-gold", amount_cents=300000)
 PAY_1000 = Movement(action="pay_card_bill", target_id="bill-gold", amount_cents=100000)

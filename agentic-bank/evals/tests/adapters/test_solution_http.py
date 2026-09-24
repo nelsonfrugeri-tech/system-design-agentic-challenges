@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 
-from harness.solution import Solution
+from harness.adapters.solution_http import HttpSolution
 from tests.conftest import free_port
 
 
@@ -47,7 +47,7 @@ def slow_server() -> Iterator[str]:
 
 
 def test_a_body_that_trickles_past_the_timeout_is_a_timeout(slow_server: str) -> None:
-    result = Solution(slow_server, timeout_s=1.0).chat(
+    result = HttpSolution(slow_server, timeout_s=1.0).chat(
         thread_id="t", message="m", headers={}
     )
 

@@ -1,49 +1,33 @@
 """S17-S20: the runner against the real bank-mcp and the real stub."""
 
 import asyncio
-import json
 import sqlite3
 import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from baselines.stub import call_bank
-from harness.adapters.bank import McpEndpoint
+from baselines.behaviours import call_bank
+from harness.adapters.bank import McpEndpoint, SqliteBank
+from harness.adapters.dataset_file import DATASET, load_dataset
+from harness.adapters.langfuse import LangfuseTracing
+from harness.adapters.solution_http import HttpSolution
 from harness.application.attempt import Settle
 from harness.application.preflight import PreflightFailed, preflight
-from harness.bank import Bank
-from harness.dataset import DATASET, load_dataset
-from harness.report import AttemptLine, ReportLine
+from harness.domain.observations import ChatResult
+from harness.domain.reports import AttemptLine, ReportLine
 from harness.run import main, new_round
-from harness.solution import ChatResult, Solution
-from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
+from tests.support.results import lines, subset
 from tests.support.rounds import run_round_into
+from tests.support.solutions import FakeSolution
 
 type StartStub = Callable[..., StubServer]
 TEST_SETTLE = Settle(quiet_s=0.3, cap_s=120.0)
-
-
-def subset(tmp_path: Path, ids: Sequence[str], *, rename: bool = False) -> Path:
-    """A dataset with only these conversations; `rename` moves them to acc-9xxx."""
-    raw: dict[str, Any] = json.loads(DATASET.read_text())
-    cases = [c for c in raw["cases"] if c["id"] in ids]
-    accounts = {c["account"]: raw["accounts"][c["account"]] for c in cases}
-    if rename:
-        mapping = {a: a.replace("acc-10", "acc-90") for a in accounts}
-        accounts = {mapping[a]: fixture for a, fixture in accounts.items()}
-        for case in cases:
-            case["account"] = mapping[case["account"]]
-            case["split"] = "holdout"
-    path = tmp_path / "dataset.json"
-    path.write_text(json.dumps({**raw, "accounts": accounts, "cases": cases}))
-    return path
 
 
 def run(
@@ -81,20 +65,6 @@ def run(
         _timeout_s=timeout_s,
         _settle=settle,
     )
-
-
-def lines(results: Path) -> list[AttemptLine | ReportLine]:
-    (path,) = results.glob("*.jsonl")
-    return read_lines(path)
-
-
-def read_lines(path: Path) -> list[AttemptLine | ReportLine]:
-    parsed: list[AttemptLine | ReportLine] = []
-    for raw in path.read_text().splitlines():
-        data = json.loads(raw)
-        model = AttemptLine if data["record_type"] == "attempt" else ReportLine
-        parsed.append(model.model_validate(data))
-    return parsed
 
 
 def calls_rows(bank_server: BankServer, accounts: Sequence[str]) -> int:
@@ -239,11 +209,10 @@ def test_public_rounds_reject_timing_overrides(
     assert "preflight:" not in error
 
 
-class PaysAnotherAccount(Solution):
+class PaysAnotherAccount(FakeSolution):
     """Answers its own account, but pays a bill of another customer."""
 
     def __init__(self, bank_url: str, victim: str) -> None:
-        super().__init__("http://unused")
         self.bank_url = bank_url
         self.victim = victim
 
@@ -271,7 +240,7 @@ def test_money_moved_in_another_account_makes_the_attempt_unsafe(
         dataset=dataset,
         bank=bank_server.bank,
         solution=PaysAnotherAccount(bank_server.url, victim="acc-1002"),
-        tracing=Tracing.disabled(),
+        tracing=LangfuseTracing.disabled(),
         results=tmp_path / "results",
         repetitions=1,
     )
@@ -283,11 +252,10 @@ def test_money_moved_in_another_account_makes_the_attempt_unsafe(
     }
 
 
-class PaysAfterAnswering(Solution):
+class PaysAfterAnswering(FakeSolution):
     """Answers the last turn at once and pays a moment later, in the background."""
 
     def __init__(self, bank_url: str) -> None:
-        super().__init__("http://unused")
         self.bank_url = bank_url
         self.turns = 0
 
@@ -310,11 +278,10 @@ class PaysAfterAnswering(Solution):
         )
 
 
-class PaysInTheNextAttempt(Solution):
+class PaysInTheNextAttempt(FakeSolution):
     """Times out, stays quiet, then pays in the next Attempt's expected turn."""
 
     def __init__(self, bank_url: str) -> None:
-        super().__init__("http://unused")
         self.bank_url = bank_url
         self.threads: list[str] = []
         self.turns: Counter[str] = Counter()
@@ -371,7 +338,7 @@ def test_a_silent_write_after_timeout_never_makes_the_round_safe(
         dataset=dataset,
         bank=bank_server.bank,
         solution=solution,
-        tracing=Tracing.disabled(),
+        tracing=LangfuseTracing.disabled(),
         results=tmp_path / "results",
         settle=Settle(quiet_s=0.1, cap_s=1.0),
     )
@@ -394,7 +361,7 @@ def test_money_that_moves_after_the_last_read_is_late_activity(
         dataset=dataset,
         bank=bank_server.bank,
         solution=PaysAfterAnswering(bank_server.url),
-        tracing=Tracing.disabled(),
+        tracing=LangfuseTracing.disabled(),
         results=tmp_path / "results",
         repetitions=1,
         settle=Settle(quiet_s=1.0, cap_s=5.0),
@@ -451,7 +418,7 @@ def test_preflight_rejects_an_mcp_serving_a_different_database(
     tmp_path: Path,
 ) -> None:
     dataset = load_dataset(DATASET)
-    observed = Bank(data_dir=tmp_path / "other-bank")
+    observed = SqliteBank(data_dir=tmp_path / "other-bank")
     observed.data_dir.mkdir()
     observed.reset_all(dataset.path)
     with sqlite3.connect(observed.db_path) as db:
@@ -463,7 +430,7 @@ def test_preflight_rejects_an_mcp_serving_a_different_database(
     try:
         with pytest.raises(PreflightFailed, match="different banks"):
             preflight(
-                Solution(start_stub("refuse").url),
+                HttpSolution(start_stub("refuse").url),
                 observed,
                 McpEndpoint(bank_server.url),
             )
@@ -522,11 +489,10 @@ def test_a_holdout_round_is_identified_by_its_sha256_and_gated_by_safety_only(
     assert after == before
 
 
-class PaysThenCrashes(Solution):
+class PaysThenCrashes(FakeSolution):
     """A solution that moves money through the real MCP, then the round breaks."""
 
     def __init__(self, bank_url: str) -> None:
-        super().__init__("http://unused")
         self.bank_url = bank_url
 
     def chat(
@@ -556,7 +522,7 @@ def test_every_account_is_reset_after_the_round_even_when_it_fails(
             dataset=dataset,
             bank=bank_server.bank,
             solution=PaysThenCrashes(bank_server.url),
-            tracing=Tracing.disabled(),
+            tracing=LangfuseTracing.disabled(),
             results=tmp_path / "results",
         )
 

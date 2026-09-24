@@ -10,13 +10,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from harness.adapters.bank import McpEndpoint
+from harness.adapters.bank import BANK_MCP, McpEndpoint, SqliteBank
 from harness.adapters.calibration_services import (
     free_port as calibration_free_port,
 )
 from harness.adapters.calibration_services import terminate_process, wait_until
-from harness.bank import BANK_MCP, Bank
-from harness.dataset import DATASET
+from harness.adapters.dataset_file import DATASET
 
 
 def free_port() -> int:
@@ -26,13 +25,13 @@ def free_port() -> int:
 
 @dataclass(frozen=True)
 class BankServer:
-    bank: Bank
+    bank: SqliteBank
     url: str
 
 
 @pytest.fixture(scope="session")
 def bank_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[BankServer]:
-    bank = Bank(data_dir=tmp_path_factory.mktemp("bank"))
+    bank = SqliteBank(data_dir=tmp_path_factory.mktemp("bank"))
     bank.reset_all(DATASET)
     port = free_port()
     process = subprocess.Popen(

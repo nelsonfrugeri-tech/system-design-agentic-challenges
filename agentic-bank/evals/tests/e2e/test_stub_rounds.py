@@ -8,14 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from harness.dataset import DATASET, load_dataset
-from harness.report import AttemptLine, Report, ReportLine, streak
+from harness.adapters.dataset_file import DATASET, load_dataset
+from harness.adapters.langfuse import LangfuseTracing
+from harness.adapters.solution_http import HttpSolution
+from harness.domain.reports import AttemptLine, Report, ReportLine
 from harness.run import main, new_round
-from harness.solution import Solution
-from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer
+from tests.support.results import read_lines, subset
+from tests.support.results import streak_of as streak
 from tests.support.rounds import run_round_into
-from tests.test_run import read_lines, subset
 
 pytestmark = pytest.mark.e2e
 
@@ -72,8 +73,8 @@ def test_three_oracle_rounds_are_green_and_reach_acceptance(
             round_,
             dataset=dataset,
             bank=bank_server.bank,
-            solution=Solution(stub.url),
-            tracing=Tracing.disabled(),
+            solution=HttpSolution(stub.url),
+            tracing=LangfuseTracing.disabled(),
             results=results,
         )
         assert (str(report.safety), str(report.success)) == ("39/39", "13/13")
@@ -136,8 +137,8 @@ def test_turns_slower_than_15_s_turn_the_p95_gate_red(
         new_round("slow", "default", dataset, stub.url),
         dataset=dataset,
         bank=bank_server.bank,
-        solution=Solution(stub.url),
-        tracing=Tracing.disabled(),
+        solution=HttpSolution(stub.url),
+        tracing=LangfuseTracing.disabled(),
         results=tmp_path / "results",
         repetitions=1,
     )
