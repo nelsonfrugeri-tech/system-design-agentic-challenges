@@ -1,6 +1,5 @@
 """S22-S23: calibration semantics and its private process lifecycle."""
 
-import asyncio
 import json
 import subprocess
 import sys
@@ -13,11 +12,22 @@ import httpx
 import pytest
 
 from baselines import stub
-from baselines.stub import Mode, ping_bank
-from harness import calibration
-from harness.calibration import UnknownDataset, run_calibration, terminate_process
+from harness.adapters.bank import McpEndpoint
+from harness.adapters.calibration_services import (
+    load_baselines,
+    private_services,
+    terminate_process,
+)
+from harness.adapters.result_history import read_violations
+from harness.application.calibration import run_calibration
 from harness.checks import SafetyViolation, Verdict, ViolationKind
 from harness.dataset import DATASET, Dataset, FinalState, Movement, load_dataset
+from harness.domain.calibration import (
+    MODES,
+    Mode,
+    PrivateServices,
+    UnknownDataset,
+)
 from harness.observed import Attempt, Marks
 from harness.report import AttemptLine, Gate, Ratio, Report
 
@@ -127,9 +137,9 @@ def matching_runner(
 
 
 @contextmanager
-def fake_services(_: Dataset) -> Iterator[calibration.PrivateServices]:
-    yield calibration.PrivateServices(
-        solution_urls={mode: f"http://stub/{mode}" for mode in calibration.MODES},
+def fake_services(_: Dataset) -> Iterator[PrivateServices]:
+    yield PrivateServices(
+        solution_urls={mode: f"http://stub/{mode}" for mode in MODES},
         bank_url="http://bank/mcp",
         bank_data_dir=Path("/private/bank"),
     )
@@ -141,7 +151,6 @@ def test_mismatch_is_a_semantic_result_and_unknown_dataset_is_preflight(
 ) -> None:
     dataset = load_dataset(DATASET)
     assert dataset.sha256 == KNOWN_SHA
-    monkeypatch.setattr(calibration, "private_services", fake_services)
 
     def mismatching_runner(
         mode: Mode,
@@ -162,6 +171,9 @@ def test_mismatch_is_a_semantic_result_and_unknown_dataset_is_preflight(
         name="mismatch",
         results=tmp_path,
         run_mode=mismatching_runner,
+        services=fake_services,
+        baselines=load_baselines(),
+        read_violations=read_violations,
     )
 
     assert not summary.passed
@@ -183,6 +195,9 @@ def test_mismatch_is_a_semantic_result_and_unknown_dataset_is_preflight(
             run_mode=lambda *_: pytest.fail(
                 "unknown datasets must fail before running"
             ),
+            services=fake_services,
+            baselines=load_baselines(),
+            read_violations=read_violations,
         )
 
 
@@ -191,7 +206,7 @@ def test_malformed_r4_attempt_is_a_harness_error(tmp_path: Path) -> None:
     path.write_text(json.dumps({"record_type": "attempt", "type": "stub"}) + "\n")
 
     with pytest.raises(RuntimeError, match="invalid calibration result"):
-        calibration._read_violations(path)
+        read_violations(path)
 
 
 class HungProcess:
@@ -236,7 +251,7 @@ def test_private_services_avoid_default_ports_and_user_database(
         assert bank_port not in (8000, 8001)
         assert solution_port != bank_port
         assert httpx.get(f"{solution_url}/health").json() == {"mode": mode}
-        asyncio.run(ping_bank(bank_url))
+        assert McpEndpoint(bank_url).ping()
         assert bank_data_dir != user_data
         assert (bank_data_dir / "bank.db").is_file()
         observed.append((solution_url, bank_url, bank_data_dir))
@@ -247,6 +262,9 @@ def test_private_services_avoid_default_ports_and_user_database(
         name="private",
         results=tmp_path / "results",
         run_mode=probe_runner,
+        services=private_services,
+        baselines=load_baselines(),
+        read_violations=read_violations,
     )
 
     assert summary.passed
@@ -256,8 +274,7 @@ def test_private_services_avoid_default_ports_and_user_database(
     for solution_url, bank_url, _ in observed:
         with pytest.raises(httpx.HTTPError):
             httpx.get(f"{solution_url}/health", timeout=0.1).raise_for_status()
-        with pytest.raises((httpx.HTTPError, ExceptionGroup)):
-            asyncio.run(ping_bank(bank_url))
+        assert not McpEndpoint(bank_url).ping()
 
     hung = HungProcess()
     terminate_process(hung, wait_s=0.01)  # type: ignore[arg-type]

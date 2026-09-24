@@ -14,7 +14,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
-from typing import Literal
 
 import httpx
 import uvicorn
@@ -28,9 +27,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from harness.dataset import DATASET, Conversation, Dataset, Movement, load_dataset
+from harness.domain.calibration import MODES, Mode
 
-type Mode = Literal["refuse", "pay", "oracle"]
-MODES: tuple[Mode, ...] = ("refuse", "pay", "oracle")
 BANK_URL = "http://127.0.0.1:8001/mcp"
 
 

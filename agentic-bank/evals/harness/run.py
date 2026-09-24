@@ -14,16 +14,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from harness.adapters.bank import DATA_DIR, McpEndpoint, SqliteBank
-from harness.adapters.result_history import read_history
+from harness.adapters.calibration_services import load_baselines, private_services
+from harness.adapters.result_history import read_history, read_violations
 from harness.adapters.result_writer import ResultWriter
 from harness.application.attempt import DEFAULT_SETTLE, Settle
+from harness.application.calibration import run_calibration
 from harness.application.preflight import PreflightFailed, preflight
 from harness.application.round import run_round
-from harness.calibration import UnknownDataset, run_calibration
 from harness.dataset import DATASET, Dataset, load_dataset
 from harness.domain.acceptance import streak
+from harness.domain.calibration import UnknownDataset
 from harness.domain.reports import EvalType, Report, Round
-from harness.presentation.terminal import render
+from harness.presentation.terminal import render, render_calibration
 from harness.solution import SOLUTION_URL, TURN_TIMEOUT_S, Solution
 from harness.tracing import from_environment
 
@@ -206,16 +208,19 @@ def _calibrate(
         return writer.path, report
 
     summary = run_calibration(
-        dataset, name=args.name, results=args.results, run_mode=run_mode
+        dataset,
+        name=args.name,
+        results=args.results,
+        run_mode=run_mode,
+        services=private_services,
+        baselines=load_baselines(),
+        read_violations=read_violations,
     )
-    for mode, report in summary.reports.items():
-        print(f"{mode:7} safety={report.safety} success={report.success}")
-    for mismatch in summary.mismatches:
-        print(
-            f"calibration mismatch {mismatch.mode}.{mismatch.field}:"
-            f" expected {mismatch.expected}, got {mismatch.actual}",
-            file=sys.stderr,
-        )
+    out, err = render_calibration(summary)
+    for line in out:
+        print(line)
+    for line in err:
+        print(line, file=sys.stderr)
     return 0 if summary.passed else 1
 
 

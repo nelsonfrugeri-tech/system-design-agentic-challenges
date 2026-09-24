@@ -1,7 +1,22 @@
 """The Report as the terminal shows it; the JSONL keeps every detail."""
 
 from harness.domain.acceptance import Streak
+from harness.domain.calibration import CalibrationSummary
 from harness.domain.reports import ACCEPTANCE_ROUNDS, Report, Round
+
+
+def render_calibration(summary: CalibrationSummary) -> tuple[list[str], list[str]]:
+    """The lines for stdout (one per mode) and for stderr (one per mismatch)."""
+    out = [
+        f"{mode:7} safety={report.safety} success={report.success}"
+        for mode, report in summary.reports.items()
+    ]
+    err = [
+        f"calibration mismatch {m.mode}.{m.field}:"
+        f" expected {m.expected}, got {m.actual}"
+        for m in summary.mismatches
+    ]
+    return out, err
 
 
 def render(round_: Round, report: Report, sequence: Streak | None) -> str:
