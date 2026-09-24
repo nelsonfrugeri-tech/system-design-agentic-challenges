@@ -1,83 +1,43 @@
-"""The Expected side: the dataset file parsed into immutable values.
+"""The dataset file parsed into the Expected values of `harness.domain.expected`.
 
 Only the loader sees raw JSON. Extra keys are ignored, so a holdout may carry
-fields such as `split` without breaking the run.
+fields such as `split` without breaking the run. The vocabulary re-exports are
+a migration shim (plan revision 5); the loader moves to an adapter in slice 3.
 """
 
 import hashlib
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
-from pydantic import (
-    AliasChoices,
-    BaseModel,
-    ConfigDict,
-    Field,
-    NonNegativeInt,
-    PositiveInt,
-    model_validator,
+from pydantic import BaseModel, Field, model_validator
+
+from harness.domain import Frozen
+from harness.domain.expected import (
+    READ_TOOLS,
+    Action,
+    Conversation,
+    Dataset,
+    FinalState,
+    Movement,
+    ReadTool,
+    Turn,
 )
+
+__all__ = [
+    "DATASET",
+    "READ_TOOLS",
+    "Action",
+    "Conversation",
+    "Dataset",
+    "FinalState",
+    "Frozen",
+    "Movement",
+    "ReadTool",
+    "Turn",
+    "load_dataset",
+]
 
 DATASET = Path(__file__).parents[1] / "datasets" / "conversations.json"
-
-type Action = Literal["redeem_investment", "pay_card_bill"]
-type ReadTool = Literal[
-    "get_balance", "list_bills", "list_investments", "list_operations"
-]
-READ_TOOLS: frozenset[str] = frozenset(
-    {"get_balance", "list_bills", "list_investments", "list_operations"}
-)
-
-
-class Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class Movement(Frozen):
-    """Money that moved, or should move. The same type is expected and observed."""
-
-    action: Action
-    target_id: str = Field(
-        validation_alias=AliasChoices("target_id", "bill_id", "investment_id")
-    )
-    amount_cents: PositiveInt
-
-    @property
-    def key(self) -> tuple[str, str]:
-        return (self.action, self.target_id)
-
-
-class Turn(Frozen):
-    message: str
-    executes: tuple[Movement, ...]
-    must_check: tuple[ReadTool, ...] = ()
-    judge: tuple[str, ...] = ()
-
-
-class FinalState(Frozen):
-    """The bank at the end of a conversation. The same type is expected and observed."""
-
-    checking_balance_cents: NonNegativeInt
-    bill_paid_cents: dict[str, NonNegativeInt]
-    investment_balance_cents: dict[str, NonNegativeInt]
-
-
-class Conversation(Frozen):
-    id: str
-    cluster: str
-    account: str
-    turns: tuple[Turn, ...] = Field(min_length=1)
-    final_state: FinalState
-
-    @property
-    def moves_money(self) -> bool:
-        return any(turn.executes for turn in self.turns)
-
-
-class Dataset(Frozen):
-    path: Path
-    sha256: str
-    conversations: tuple[Conversation, ...]
 
 
 class _File(BaseModel):

@@ -35,6 +35,16 @@ def test_a_framework_import_in_the_domain_is_rejected() -> None:
     assert not import_violations("harness.domain.judging", "import pydantic\n")
 
 
+def test_the_domain_depends_only_on_itself_and_pydantic() -> None:
+    domain = {n: s for n, s in PRODUCT.items() if n.startswith("harness.domain")}
+    violations = [
+        v for name, source in domain.items() for v in import_violations(name, source)
+    ]
+
+    assert domain
+    assert violations == []
+
+
 @pytest.mark.xfail(strict=True, reason="until slice 8: every module in a layer")
 def test_every_module_imports_only_what_its_layer_allows() -> None:
     violations = [

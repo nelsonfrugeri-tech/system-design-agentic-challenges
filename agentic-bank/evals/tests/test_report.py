@@ -17,7 +17,6 @@ from harness.report import (
     ReportLine,
     Round,
     Stamp,
-    p95,
     streak,
     summarize,
 )
@@ -116,6 +115,13 @@ def test_clusters_are_broken_down() -> None:
         "x": Ratio(passed=1, total=1),
         "y": Ratio(passed=0, total=1),
     }
+
+
+def p95(times: Sequence[float]) -> float:
+    """The p95 the Report computes: one single-turn Attempt per time."""
+    conversations = [conversation("a", moves=False)]
+    attempts = [judged("a", elapsed_s=t) for t in times]
+    return summarize(conversations, attempts, type="default").p95_s
 
 
 # S10

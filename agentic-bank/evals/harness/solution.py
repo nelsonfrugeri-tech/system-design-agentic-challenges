@@ -10,18 +10,20 @@ from collections.abc import Mapping
 import httpx
 from pydantic import ValidationError
 
-from harness.dataset import Frozen
-from harness.observed import Outcome
+from harness.domain import Frozen
+from harness.domain.observations import ChatResult
+
+__all__ = [
+    "HEALTH_TIMEOUT_S",
+    "SOLUTION_URL",
+    "TURN_TIMEOUT_S",
+    "ChatResult",
+    "Solution",
+]
 
 SOLUTION_URL = "http://127.0.0.1:8000"
 TURN_TIMEOUT_S = 120.0
 HEALTH_TIMEOUT_S = 1.0
-
-
-class ChatResult(Frozen):
-    reply: str | None
-    elapsed_s: float
-    outcome: Outcome
 
 
 class _Reply(Frozen):

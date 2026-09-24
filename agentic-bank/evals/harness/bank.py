@@ -14,32 +14,20 @@ from collections.abc import Sequence
 from contextlib import closing
 from pathlib import Path
 
-from harness.dataset import FinalState, Frozen, Movement
-from harness.observed import ForeignCall, ForeignMovement, Marks, ToolCall
+from harness.domain.expected import FinalState, Movement
+from harness.domain.observations import (
+    ForeignCall,
+    ForeignMovement,
+    Marks,
+    RowIds,
+    ToolCall,
+    TurnActivity,
+)
+
+__all__ = ["BANK_MCP", "DATA_DIR", "Bank", "RowIds", "TurnActivity"]
 
 BANK_MCP = Path(__file__).parents[2] / "bank-mcp"
 DATA_DIR = Path(__file__).parents[2] / ".data"
-
-
-class RowIds(Frozen):
-    """Which bank rows the harness has already attributed to a turn."""
-
-    calls: frozenset[int] = frozenset()
-    operations: frozenset[int] = frozenset()
-
-    def __or__(self, other: "RowIds") -> "RowIds":
-        return RowIds(
-            calls=self.calls | other.calls,
-            operations=self.operations | other.operations,
-        )
-
-
-class TurnActivity(Frozen):
-    moved: tuple[Movement, ...]
-    calls: tuple[ToolCall, ...]
-    foreign_moved: tuple[ForeignMovement, ...]
-    foreign_calls: tuple[ForeignCall, ...]
-    row_ids: RowIds
 
 
 class Bank:
