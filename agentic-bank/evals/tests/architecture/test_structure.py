@@ -90,7 +90,6 @@ def test_an_adapter_that_declares_a_protocol_is_exempt() -> None:
     assert wide_classes("m", adapter, frozenset())
 
 
-@pytest.mark.xfail(strict=True, reason="until slice 3: Bank, Tracing become adapters")
 def test_no_class_exposes_more_than_3_public_methods() -> None:
     violations = [
         v for name, source in PRODUCT.items() for v in wide_classes(name, source, PORTS)
