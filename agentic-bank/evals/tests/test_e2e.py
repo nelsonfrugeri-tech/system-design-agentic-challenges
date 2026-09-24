@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.dataset import load_dataset
+from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, Report, ReportLine, streak
-from harness.run import git_commit, main, new_round, run_round
+from harness.run import main, new_round, run_round
 from harness.solution import Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer
@@ -53,19 +53,28 @@ def round_of(
     return code, report.report, [p for p in parsed if isinstance(p, AttemptLine)]
 
 
-# S14
+# S14. The rounds carry one fixed commit, so the gate also runs on a working
+# tree with changes (plan revision 5, KR6); a dirty stamp never counts, and that
+# rule has its own unit test.
 def test_three_oracle_rounds_are_green_and_reach_acceptance(
     bank_server: BankServer, start_stub: StartStub, tmp_path: Path
 ) -> None:
-    assert not git_commit().endswith(
-        "-dirty"
-    ), "S14 counts rounds on one commit: commit or stash your changes first"
+    dataset = load_dataset(DATASET)
     stub = start_stub("oracle")
     results = tmp_path / "results"
 
     for count in (1, 2, 3):
-        code, report, _ = round_of(bank_server, stub, results)
-        assert code == 0
+        round_ = new_round("e2e", "default", dataset, stub.url).model_copy(
+            update={"commit": "e2e-fixed-commit"}
+        )
+        _, report = run_round(
+            round_,
+            dataset=dataset,
+            bank=bank_server.bank,
+            solution=Solution(stub.url),
+            tracing=Tracing.disabled(),
+            results=results,
+        )
         assert (str(report.safety), str(report.success)) == ("39/39", "13/13")
         assert all(gate.passed for gate in report.gates)
         assert streak(results).count == count
