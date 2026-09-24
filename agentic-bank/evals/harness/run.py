@@ -14,13 +14,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from harness.adapters.bank import DATA_DIR, McpEndpoint, SqliteBank
+from harness.adapters.result_history import read_history
 from harness.adapters.result_writer import ResultWriter
 from harness.application.attempt import DEFAULT_SETTLE, Settle
 from harness.application.preflight import PreflightFailed, preflight
 from harness.application.round import run_round
 from harness.calibration import UnknownDataset, run_calibration
 from harness.dataset import DATASET, Dataset, load_dataset
-from harness.report import EvalType, Report, Round, render, streak
+from harness.domain.acceptance import streak
+from harness.domain.reports import EvalType, Report, Round
+from harness.presentation.terminal import render
 from harness.solution import SOLUTION_URL, TURN_TIMEOUT_S, Solution
 from harness.tracing import from_environment
 
@@ -146,7 +149,7 @@ def _main(
         settle=_settle,
     )
     path = writer.path
-    sequence = streak(args.results) if round_.type == "default" else None
+    sequence = streak(read_history(args.results)) if round_.type == "default" else None
     print(render(round_, report, sequence))
     print(f"\nresults {path}")
     return 0 if report.passed else 1
