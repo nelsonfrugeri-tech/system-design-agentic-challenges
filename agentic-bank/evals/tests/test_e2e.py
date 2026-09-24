@@ -10,10 +10,11 @@ import pytest
 
 from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, Report, ReportLine, streak
-from harness.run import main, new_round, run_round
+from harness.run import main, new_round
 from harness.solution import Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer
+from tests.support.rounds import run_round_into
 from tests.test_run import read_lines, subset
 
 pytestmark = pytest.mark.e2e
@@ -67,7 +68,7 @@ def test_three_oracle_rounds_are_green_and_reach_acceptance(
         round_ = new_round("e2e", "default", dataset, stub.url).model_copy(
             update={"commit": "e2e-fixed-commit"}
         )
-        _, report = run_round(
+        _, report = run_round_into(
             round_,
             dataset=dataset,
             bank=bank_server.bank,
@@ -131,7 +132,7 @@ def test_turns_slower_than_15_s_turn_the_p95_gate_red(
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill"]))
     stub = start_stub("refuse", delay_s=15.1)
 
-    _, report = run_round(
+    _, report = run_round_into(
         new_round("slow", "default", dataset, stub.url),
         dataset=dataset,
         bank=bank_server.bank,

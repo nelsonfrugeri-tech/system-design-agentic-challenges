@@ -1,304 +1,35 @@
-"""One Round: preflight, then every conversation 3 times, one turn at a time.
+"""The evals command line: preflight, then one Round (or the stub calibration).
 
-The loop is sequential on purpose: turn attribution by marks is valid only with
-one turn per account at a time. Every Attempt starts from a reset of its
-account, and every account of the dataset is reset before and after the round,
-even when the round fails.
+The Attempt and Round lifecycles live in `harness.application`; this module
+wires the adapters and maps outcomes to exit codes (plan revision 5).
 """
 
 import argparse
-import asyncio
 import os
-import socket
 import subprocess
 import sys
-import time
 import uuid
-from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime, timedelta
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Self
-from urllib.parse import urlsplit
 
-import httpx
-from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
-from pydantic import PositiveFloat, model_validator
-
-from harness.bank import DATA_DIR, Bank, RowIds
+from harness.adapters.bank import DATA_DIR, McpEndpoint, SqliteBank
+from harness.adapters.result_writer import ResultWriter
+from harness.application.attempt import DEFAULT_SETTLE, Settle
+from harness.application.preflight import PreflightFailed, preflight
+from harness.application.round import run_round
 from harness.calibration import UnknownDataset, run_calibration
-from harness.checks import judge
-from harness.dataset import DATASET, Conversation, Dataset, Frozen, load_dataset
-from harness.observed import Attempt, TurnFacts, TurnRecord
-from harness.report import (
-    AttemptLine,
-    EvalType,
-    Judged,
-    Report,
-    ReportLine,
-    Round,
-    Stamp,
-    render,
-    streak,
-    summarize,
-)
+from harness.dataset import DATASET, Dataset, load_dataset
+from harness.report import EvalType, Report, Round, render, streak
 from harness.solution import SOLUTION_URL, TURN_TIMEOUT_S, Solution
-from harness.tracing import Tracing, from_environment
+from harness.tracing import from_environment
 
-REPETITIONS = 3
 BANK_URL = "http://127.0.0.1:8001/mcp"
 RESULTS = Path(__file__).parents[1] / "results"
-PREFLIGHT_TIMEOUT_S = 1.0
-# After a failed turn the solution may still be running it. The harness waits
-# for the account to go quiet before reading the turn, and never sends the next.
-QUIET_S = 5.0
-SETTLE_CAP_S = 120.0
-
-
-class Settle(Frozen):
-    quiet_s: PositiveFloat = QUIET_S
-    cap_s: PositiveFloat = SETTLE_CAP_S
-
-    @model_validator(mode="after")
-    def cap_covers_quiet(self) -> Self:
-        if self.cap_s < self.quiet_s:
-            raise ValueError("the settle cap must be at least the quiet window")
-        return self
-
-
-DEFAULT_SETTLE = Settle()
-
-
-class PreflightFailed(Exception):
-    def __init__(self, missing: Sequence[str]) -> None:
-        super().__init__("; ".join(missing))
-        self.missing = tuple(missing)
 
 
 class UsageFailed(ValueError):
     """The requested round type and dataset path are inconsistent."""
-
-
-def preflight(solution: Solution, bank: Bank, bank_url: str) -> None:
-    """Fail fast unless the solution and the observed MCP bank both answer."""
-    missing: list[str] = []
-    if not solution.health():
-        missing.append(
-            f"solution: GET {solution.url}/health did not answer 200;"
-            " start it (make stub mode=oracle, or your solution)"
-        )
-    if not bank.db_path.is_file():
-        missing.append(f"bank: {bank.db_path} does not exist; run make seed")
-    if not _listening(bank_url):
-        missing.append(
-            f"bank: nothing listening at {bank_url};"
-            " start it (make -C agentic-bank/bank-mcp up)"
-        )
-    if missing:
-        raise PreflightFailed(missing)
-    # Use an account already present in the observed database. Seeding before
-    # identity is proven would mutate the wrong database on a split setup.
-    try:
-        account = bank.probe_account()
-    except LookupError as error:
-        raise PreflightFailed((f"bank: {error}; run make seed",)) from error
-    marks = bank.marks()
-    try:
-        asyncio.run(_call_balance(bank_url, account))
-    except Exception as error:
-        raise PreflightFailed((f"bank: MCP get_balance failed: {error}",)) from error
-    calls = bank.since(account, marks).calls
-    if not any(call.tool == "get_balance" for call in calls):
-        raise PreflightFailed(
-            (
-                "bank: MCP answered but did not write to the observed bank.db;"
-                " BANK_URL and BANK_DATA_DIR identify different banks",
-            )
-        )
-
-
-async def _call_balance(bank_url: str, account: str) -> None:
-    async with (
-        httpx.AsyncClient(
-            headers={"X-Account-Id": account}, timeout=PREFLIGHT_TIMEOUT_S
-        ) as http,
-        streamable_http_client(bank_url, http_client=http) as (read, write, _),
-        ClientSession(read, write) as session,
-    ):
-        await session.initialize()
-        await session.call_tool(
-            "get_balance",
-            {},
-            read_timeout_seconds=timedelta(seconds=PREFLIGHT_TIMEOUT_S),
-        )
-
-
-def _listening(url: str) -> bool:
-    # A TCP connect, not an MCP call: a tool call would land in `calls`.
-    parts = urlsplit(url)
-    try:
-        with socket.create_connection(
-            (parts.hostname or "127.0.0.1", parts.port or 80),
-            timeout=PREFLIGHT_TIMEOUT_S,
-        ):
-            return True
-    except OSError:
-        return False
-
-
-def run_round(
-    round_: Round,
-    *,
-    dataset: Dataset,
-    bank: Bank,
-    solution: Solution,
-    tracing: Tracing,
-    results: Path,
-    repetitions: int = REPETITIONS,
-    settle: Settle = DEFAULT_SETTLE,
-) -> tuple[Path, Report]:
-    """Run every Attempt, write one JSONL line per Attempt, and the Report last."""
-    results.mkdir(parents=True, exist_ok=True)
-    path = results / f"{round_.id}.jsonl"
-    stamp = Stamp.of(round_).model_dump()
-    judged: list[Judged] = []
-    # An Attempt's line waits until its account is reset again, or the round
-    # ends: rows that appear after its last read make it unsafe.
-    pending: dict[str, Judged] = {}
-    read = RowIds()  # every row some turn of this round already read
-    bank.reset_all(dataset.path)
-    try:
-        with path.open("w") as out:
-
-            def close(account: str, *, late: bool = False) -> None:
-                entry = pending.pop(account)
-                unseen = bank.unseen(account, entry.attempt.start_marks, read)
-                verdict = entry.verdict.model_copy(
-                    update={"late_activity": late or unseen > 0}
-                )
-                judged.append(Judged(attempt=entry.attempt, verdict=verdict))
-                line = AttemptLine(**stamp, attempt=entry.attempt, verdict=verdict)
-                out.write(line.model_dump_json() + "\n")
-                out.flush()
-
-            for conversation, repetition in _schedule(dataset, repetitions):
-                if conversation.account in pending:
-                    close(conversation.account)
-                attempt, seen = run_attempt(
-                    round_.id,
-                    conversation,
-                    repetition,
-                    dataset=dataset,
-                    bank=bank,
-                    solution=solution,
-                    tracing=tracing,
-                    settle=settle,
-                )
-                verdict = judge(
-                    conversation,
-                    initial_operations=attempt.initial_operations,
-                    turns=[t.facts for t in attempt.turns],
-                    final_state=attempt.final_state,
-                )
-                read = read | seen
-                pending[attempt.account] = Judged(attempt=attempt, verdict=verdict)
-            # One wait per round, not per turn: a bank that never goes quiet
-            # leaves every open Attempt unsafe.
-            quiet = bank.settle_all(quiet_s=settle.quiet_s, cap_s=settle.cap_s)
-            for account in list(pending):
-                close(account, late=not quiet)
-            report = summarize(dataset.conversations, judged, type=round_.type)
-            out.write(
-                ReportLine(**stamp, round=round_, report=report).model_dump_json()
-                + "\n"
-            )
-    finally:
-        bank.reset_all(dataset.path)
-        tracing.flush()
-    return path, report
-
-
-def run_attempt(
-    round_id: str,
-    conversation: Conversation,
-    repetition: int,
-    *,
-    dataset: Dataset,
-    bank: Bank,
-    solution: Solution,
-    tracing: Tracing,
-    settle: Settle = DEFAULT_SETTLE,
-) -> tuple[Attempt, RowIds]:
-    """Run one Attempt; also return the bank rows its turns already read."""
-    account = conversation.account
-    started = time.perf_counter()
-    bank.reset([account], dataset.path)
-    reset_s = time.perf_counter() - started
-    initial_operations = bank.operations(account)
-    start_marks = bank.marks()
-    seen = RowIds()
-    thread_id = str(uuid.uuid4())
-    turns: list[TurnRecord] = []
-    with tracing.attempt(
-        round_id=round_id,
-        conversation_id=conversation.id,
-        repetition=repetition,
-        account=account,
-        thread_id=thread_id,
-    ) as trace_id:
-        for index, turn in enumerate(conversation.turns, start=1):
-            marks = bank.marks()
-            with tracing.turn(index, turn.message) as traced:
-                result = solution.chat(
-                    thread_id=thread_id,
-                    message=turn.message,
-                    headers={**traced.headers, "X-Account-Id": account},
-                )
-                traced.answered(result)
-            # Waits for the whole bank: the late write may land in any account.
-            settled = result.outcome == "ok" or bank.settle_all(
-                quiet_s=settle.quiet_s, cap_s=settle.cap_s
-            )
-            activity = bank.since(account, marks)
-            seen = seen | activity.row_ids
-            turns.append(
-                TurnRecord(
-                    index=index,
-                    message=turn.message,
-                    reply=result.reply,
-                    elapsed_s=result.elapsed_s,
-                    facts=TurnFacts(
-                        moved=activity.moved,
-                        calls=activity.calls,
-                        outcome=result.outcome,
-                        settled=settled,
-                        foreign_moved=activity.foreign_moved,
-                        foreign_calls=activity.foreign_calls,
-                    ),
-                )
-            )
-            if result.outcome != "ok":
-                break
-    attempt = Attempt(
-        round_id=round_id,
-        conversation_id=conversation.id,
-        repetition=repetition,
-        thread_id=thread_id,
-        trace_id=trace_id,
-        account=account,
-        start_marks=start_marks,
-        initial_operations=initial_operations,
-        turns=tuple(turns),
-        final_state=bank.final_state(account),
-        reset_s=reset_s,
-    )
-    return attempt, seen
-
-
-def _schedule(dataset: Dataset, repetitions: int) -> Iterator[tuple[Conversation, int]]:
-    for conversation in dataset.conversations:
-        for repetition in range(1, repetitions + 1):
-            yield conversation, repetition
 
 
 def git_commit(repository: Path = Path(__file__).parent) -> str:
@@ -389,10 +120,10 @@ def _main(
     print(f"dataset {dataset.path}\nsha256  {dataset.sha256}", flush=True)
     if args.type == "stub":
         return _calibrate(args, dataset, timeout_s=_timeout_s, settle=_settle)
-    bank = Bank(data_dir=args.bank_data_dir)
+    bank = SqliteBank(data_dir=args.bank_data_dir)
     solution = Solution(args.solution_url, timeout_s=_timeout_s)
     try:
-        preflight(solution, bank, args.bank_url)
+        preflight(solution, bank, McpEndpoint(args.bank_url))
     except PreflightFailed as failed:
         for line in failed.missing:
             print(f"preflight: {line}", file=sys.stderr)
@@ -404,15 +135,17 @@ def _main(
             file=sys.stderr,
         )
     round_ = new_round(args.name, args.type, dataset, solution.url)
-    path, report = run_round(
+    writer = ResultWriter(args.results, round_.id)
+    report = run_round(
         round_,
         dataset=dataset,
         bank=bank,
         solution=solution,
         tracing=tracing,
-        results=args.results,
+        sink=writer,
         settle=_settle,
     )
+    path = writer.path
     sequence = streak(args.results) if round_.type == "default" else None
     print(render(round_, report, sequence))
     print(f"\nresults {path}")
@@ -452,20 +185,22 @@ def _calibrate(
         bank_data_dir: Path,
         results: Path,
     ) -> tuple[Path, Report]:
-        bank = Bank(data_dir=bank_data_dir)
+        bank = SqliteBank(data_dir=bank_data_dir)
         solution = Solution(solution_url, timeout_s=timeout_s)
-        preflight(solution, bank, bank_url)
+        preflight(solution, bank, McpEndpoint(bank_url))
         tracing, _ = from_environment()
         round_ = new_round(f"{args.name}-{mode}", "stub", dataset, solution.url)
-        return run_round(
+        writer = ResultWriter(results, round_.id)
+        report = run_round(
             round_,
             dataset=dataset,
             bank=bank,
             solution=solution,
             tracing=tracing,
-            results=results,
+            sink=writer,
             settle=settle,
         )
+        return writer.path, report
 
     summary = run_calibration(
         dataset, name=args.name, results=args.results, run_mode=run_mode

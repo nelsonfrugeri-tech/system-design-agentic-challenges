@@ -14,13 +14,17 @@ import pytest
 from pydantic import ValidationError
 
 from baselines.stub import call_bank
+from harness.adapters.bank import McpEndpoint
+from harness.application.attempt import Settle
+from harness.application.preflight import PreflightFailed, preflight
 from harness.bank import Bank
 from harness.dataset import DATASET, load_dataset
 from harness.report import AttemptLine, ReportLine
-from harness.run import PreflightFailed, Settle, main, new_round, preflight, run_round
+from harness.run import main, new_round
 from harness.solution import ChatResult, Solution
 from harness.tracing import Tracing
 from tests.conftest import BankServer, StubServer, free_port
+from tests.support.rounds import run_round_into
 
 type StartStub = Callable[..., StubServer]
 TEST_SETTLE = Settle(quiet_s=0.3, cap_s=120.0)
@@ -262,7 +266,7 @@ def test_money_moved_in_another_account_makes_the_attempt_unsafe(
 ) -> None:
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill"]))
 
-    _, report = run_round(
+    _, report = run_round_into(
         new_round("foreign", "default", dataset),
         dataset=dataset,
         bank=bank_server.bank,
@@ -362,7 +366,7 @@ def test_a_silent_write_after_timeout_never_makes_the_round_safe(
     dataset = load_dataset(subset(tmp_path, ["clear-full-payment"]))
     solution = PaysInTheNextAttempt(bank_server.url)
 
-    _, report = run_round(
+    _, report = run_round_into(
         new_round("silent-late", "default", dataset),
         dataset=dataset,
         bank=bank_server.bank,
@@ -385,7 +389,7 @@ def test_money_that_moves_after_the_last_read_is_late_activity(
 ) -> None:
     dataset = load_dataset(subset(tmp_path, ["ambiguous-bill"]))
 
-    _, report = run_round(
+    _, report = run_round_into(
         new_round("late", "default", dataset),
         dataset=dataset,
         bank=bank_server.bank,
@@ -458,7 +462,11 @@ def test_preflight_rejects_an_mcp_serving_a_different_database(
 
     try:
         with pytest.raises(PreflightFailed, match="different banks"):
-            preflight(Solution(start_stub("refuse").url), observed, bank_server.url)
+            preflight(
+                Solution(start_stub("refuse").url),
+                observed,
+                McpEndpoint(bank_server.url),
+            )
         assert observed.final_state("acc-1001") == state_before
         assert observed.marks() == marks_before
     finally:
@@ -543,7 +551,7 @@ def test_every_account_is_reset_after_the_round_even_when_it_fails(
     round_ = new_round("crash", "default", dataset)
 
     with pytest.raises(RuntimeError, match="mid-turn"):
-        run_round(
+        run_round_into(
             round_,
             dataset=dataset,
             bank=bank_server.bank,
