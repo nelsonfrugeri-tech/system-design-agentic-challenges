@@ -1,7 +1,6 @@
 """Real dependencies for integration tests: a bank-mcp server on a temporary
 SQLite seeded by `make seed`, and the stub on a free port. Nothing is mocked."""
 
-import asyncio
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -11,11 +10,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from baselines.stub import ping_bank
-from harness.bank import BANK_MCP, Bank
-from harness.calibration import free_port as calibration_free_port
-from harness.calibration import terminate_process, wait_until
-from harness.dataset import DATASET
+from harness.adapters.bank import BANK_MCP, McpEndpoint, SqliteBank
+from harness.adapters.calibration_services import (
+    free_port as calibration_free_port,
+)
+from harness.adapters.calibration_services import terminate_process, wait_until
+from harness.adapters.dataset_file import DATASET
 
 
 def free_port() -> int:
@@ -25,21 +25,13 @@ def free_port() -> int:
 
 @dataclass(frozen=True)
 class BankServer:
-    bank: Bank
+    bank: SqliteBank
     url: str
-
-
-def _bank_answers(url: str) -> bool:
-    try:
-        asyncio.run(ping_bank(url))
-    except Exception:
-        return False
-    return True
 
 
 @pytest.fixture(scope="session")
 def bank_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[BankServer]:
-    bank = Bank(data_dir=tmp_path_factory.mktemp("bank"))
+    bank = SqliteBank(data_dir=tmp_path_factory.mktemp("bank"))
     bank.reset_all(DATASET)
     port = free_port()
     process = subprocess.Popen(
@@ -62,7 +54,7 @@ def bank_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[BankServer
     )
     url = f"http://127.0.0.1:{port}/mcp"
     try:
-        wait_until(lambda: _bank_answers(url), process)
+        wait_until(McpEndpoint(url).ping, process)
         yield BankServer(bank=bank, url=url)
     finally:
         terminate_process(process)
